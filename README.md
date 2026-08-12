@@ -1,398 +1,141 @@
-# Star Citizen Tracker
+# Star Citizen Operations Tracker
 
-![Star Citizen Tracker](assets/hero_banner.jpg)
+A portfolio-grade, multi-user operations tracker for **Star Citizen** built with Python, Streamlit, Supabase/PostgreSQL, and live external data integrations.
 
-A private, multiuser operations dashboard for **Star Citizen** built with Streamlit and Supabase.
+The project is designed around a practical data problem: players generate activity across contracts, salvage, mining, commodities, blueprints, and loot, but the information is normally scattered across game sessions and external websites. This app centralizes those workflows into an authenticated system with persistent records, calculations, dashboards, inventory views, exports, and API-assisted reference data.
 
-The application combines contract tracking, mining and ore inventory, commodity trading, mining locations, blueprint readiness, saved records, account management, and export tools in one responsive web interface.
+> **Portfolio note:** This public release maps to the internally validated Deep Space Blue V21 build, but uses normal semantic release numbering for GitHub.
 
-**Live application:** [https://sc-tracker-tool.streamlit.app/](https://sc-tracker-tool.streamlit.app/)
+## Live Demo
 
+Streamlit deployment: `https://sc-tracker-tool.streamlit.app/`
 
-## Premium interface transformation
+The application uses user authentication, so some functionality requires an account.
 
-The application now uses a unified product design system based on the approved
-Purchase Locations concept:
+## What the App Demonstrates
 
-- Warm off-white application background
-- White rounded content cards
-- Olive navigation and action accents
-- Minimal borders and no heavy shadows
-- Compact top-level page headings instead of image-heavy banners
-- Icon-led sidebar navigation
-- Unified metric cards, tabs, inputs, forms, charts, and alerts
-- Compact quick-access cards on the Dashboard
-- Minimal purchase and sale location lists with direct **Use in Tracker**
-  actions
-- Compact item-shop purchase rows instead of wide spreadsheet tables
-- Detailed UEX terminal fields moved into a collapsed advanced-data section
-- Green and red reserved for positive and negative monetary meaning
-- Existing authentication, Supabase data, calculations, exports, UEX data,
-  loot records, and migrations preserved
+- Authenticated multi-user application design
+- PostgreSQL persistence through Supabase
+- Row Level Security for user-isolated records
+- CRUD workflows for contracts, resources, commodities, blueprints, and loot
+- Automated financial and inventory calculations
+- Interactive Plotly dashboards and filters
+- CSV, ZIP, Excel, and optional Google Sheets exports
+- External API/data integrations for live reference information
+- Session persistence and encrypted refresh-token cookie handling
+- Database migrations and schema repair workflows
+- Offline connection-contract tests for core CRUD behavior
 
-### Deploying the redesigned version
+## Core Workflows
 
-For the visual redesign, replace:
+### Contracts and Salvage
 
-```text
-app.py
-.streamlit/config.toml
-README.md
-```
+Track mission activity with contract type, payout, salvage proceeds, expenses, crew size, notes, and calculated take-home pay.
 
-No new database migration is required for the design transformation. Existing
-projects should still have migrations through
-`schema_migration_v9_loot_and_shops.sql` applied.
-
-## Current Release Highlights
-
-This version includes the complete redesign and functionality upgrades developed for the tracker:
-
-- Professional light interface using the chartreuse accent `#98FB17`
-- Flat buttons and tabs with no gradients or drop shadows
-- Visible four-sided outlines on text fields, dropdowns, number inputs, text areas, checkboxes, radio groups, and file uploaders
-- Persistent login using an encrypted browser refresh-token cookie
-- Remembered account email and optional keep-signed-in behavior
-- Password recovery, password change, display name, profile picture, and timezone settings
-- Compact inline submission confirmations instead of large success popups
-- Contracts, ore, and commodity activity included in the Dashboard
-- Verified ore and commodity calculations shared across records, graphs, inventory, and exports
-- Commodity Trading shortcut added to the Dashboard
-- Commodity Ledger added to Saved Records
-- Live UEX market and mining-location data
-- SC Trade Tools directory integration with optional licensed API access
-- SC Craft Tools blueprint database integration
-- Excel, CSV ZIP, and optional filled Google Sheets exports
-- U.S. timezone options plus support for additional IANA timezones
-- Responsive desktop and mobile layouts
-
-
-## Loot and Shop Finder
-
-The **Loot & Shops** page combines live item-store information with a
-community-maintained acquisition table.
-
-### Item Shop Finder
-
-The live shop finder uses UEX item categories, item metadata, and terminal
-prices to display:
-
-- Item
-- Category and section
-- Manufacturer
-- Size
-- System and environment
-- Full terminal location
-- Price paid by the player
-- Price paid by the terminal when buying from the player
-- Game version
-- Last update
-- Wiki link
-
-The table can be searched, filtered by system, limited to currently
-purchasable listings, and downloaded as CSV.
-
-### Shared Loot Table
-
-Authenticated users can record:
-
-- Item name and category
-- Acquisition type
-- System and location
-- Specific room or area
-- Container, boss, mission, or reward source
-- Rarity
-- Mission or event
-- Patch version
-- Verification status and date
-- Notes
-- Shared or private visibility
-
-Shared records are visible to every authenticated app user. Private records
-remain visible only to the account that created them. Users can update or
-delete only their own entries.
-
-Run `schema_migration_v9_loot_and_shops.sql` once before using the shared
-loot table. The live UEX shop finder does not depend on that migration.
-
-
-
-## Asset Image Reintegration
-
-The packaged artwork in `assets/` is integrated into the modern interface
-without reverting the current typography, borders, controls, calculations, or
-page structure.
-
-The current image placements include:
-
-- `dashboard_banner.jpg` for the Dashboard welcome area
-- `hero_banner.jpg` for authentication and account recovery
-- `contracts_banner.jpg` for Contracts and Blueprints
-- `ore_banner.jpg` for the Ore Ledger and Mining Locations
-- `records_banner.jpg` for Records, Commodities, and Loot & Shops
-- `export_banner.jpg` for Export Data
-- `edit_banner.jpg` for the Profile page
-- Feature images for the Dashboard workspace shortcuts
-- `star_citizen_logo_black.png` in the sidebar brand
-- `sidebar_art.jpg` in the sidebar operations card
-
-Images use responsive cover cropping, gradient overlays, and fixed-height
-containers so they remain readable without stretching or changing the
-application's modern layout.
-
-## Main Features
-
-### Dashboard
-
-The Dashboard provides a quick overview of the signed-in user's activity.
-
-It includes:
-
-- Total earnings over time
-- Net contribution by source
-- Contract earnings by type
-- Ore value by mineral
-- Commodity purchase, sale, loss, and net-profit performance
-- Activity mix across contracts, ore, and commodities
-- Contract take-home
-- Ore sales and on-hand SCU
-- Commodity sales, on-hand SCU, and net cash flow
-- Total recorded spending
-- Overall net profit
-- Date-range and record-search filters
-- Shortcut cards for Contracts, Ore, Commodities, Saved Records, and Mining Locations
-
-### Contract Calculator
-
-Record and calculate contract activity using:
-
-- Contract name
-- Contract type
-- Offer group
-- System or area
-- Total payout
-- Expenses
-- Crew size
-- Individual share
-- Notes
-
-Contract math:
+Core calculations include:
 
 ```text
-Net payout = Total payout - Expenses
+Gross income = Contract payout + Salvage proceeds
+Net payout = Gross income - Expenses
 Individual share = Net payout / Crew members
 ```
 
-### Ore Ledger
+The current release includes the salvage-aware contract save/verification logic introduced in the final internal migration.
 
-Track mined, purchased, and sold ores or gems.
+### Mining and Ore Ledger
 
-Each entry supports:
+Record mined, purchased, and sold ore or gems using SCU quantity, unit price, total value, location, and notes. The ledger supports inventory and cash-flow calculations instead of storing only a single value.
 
-- Ore or mineral
-- Activity type
-- SCU quantity
-- Price per SCU or total cargo value
-- Location
-- Notes
-- Verified value
-- Cash effect
-- On-hand inventory
+### Commodity Trading
 
-Ore math:
+Track commodity purchases, sales, and losses. The workflow includes inventory, trade net, fees, route information, market references, and saved trade history.
 
-```text
-Verified value = SCU quantity × Unit price
+### Dashboards
 
-On hand = Mined SCU + Bought SCU - Sold SCU
+The dashboard combines contract, ore, and commodity activity into a consolidated operational view with filters and interactive visualizations.
 
-Ore trade net = Sales revenue - Purchase cost
-```
+### Saved Records and Exports
 
-Older value-only records remain visible, but their SCU quantity must be entered manually before they can affect inventory.
+Users can search, edit, delete, and export their own records. Export options include formatted Excel workbooks, CSV packages, and optional Google Sheets creation when credentials are configured.
 
-### Commodities
-
-The Commodities workspace includes:
-
-- Market Snapshot
-- Trade Routes
-- Route Planner
-- My Trade Tracker
-- SC Trade Tools
-- Cargo Calculator
-- Best player purchase price
-- Best player sale price
-- Maximum spread
-- Estimated gross profit
-- Matching terminals
-- Buy and sell location tables
-- Shipment-loss tracking
-- Commodity inventory
-- Trade history
-- CSV downloads
-- Data-health diagnostics
-
-Commodity math:
+## Architecture
 
 ```text
-Cargo value = SCU quantity × Unit price
-
-Bought cash effect = -(Cargo value + Fees)
-
-Sold cash effect = Cargo value - Fees
-
-Lost or destroyed cash effect = -(Cargo value + Fees)
-
-On hand = Bought SCU - Sold SCU - Lost SCU
-
-Net cash flow = Sales revenue - Purchase cost - Recorded losses
+Browser
+  │
+  ▼
+Streamlit application (app.py)
+  │
+  ├── Supabase Authentication
+  │
+  ├── Supabase PostgreSQL
+  │     └── Row Level Security by authenticated user ID
+  │
+  ├── UEX live/reference data
+  ├── SC Trade Tools integration
+  ├── SC Craft Tools reference integration
+  └── Google Sheets API (optional export)
 ```
 
-Commodity submissions are verified by reading the saved record back from Supabase before the app confirms success.
+### Data Security Model
 
-### Mining Locations
-
-Search and filter mining locations using:
-
-- Ore or gem
-- Resource type
-- System
-- Environment
-- Planet, moon, station, asteroid, or space
-- Mining method
-- Location search
-- Spawn information and occurrence data
-
-The page uses live UEX relationships when available and includes a packaged fallback dataset in `data/mining_locations.csv`.
-
-### Blueprints
-
-The Blueprints area includes:
-
-- Embedded SC Craft Tools database
-- External database link when embedding is blocked
-- Personal blueprint tracker
-- Blueprint ownership
-- Copies owned
-- Planned builds
-- Acquisition location
-- Required ores and gems
-- Material-readiness comparison against the Ore Ledger
-- Blueprint editing and deletion
-
-### Saved Records
-
-View and manage:
-
-- Contracts
-- Ore Ledger records
-- Commodity Ledger records
-
-The management area supports editing and permanent deletion of saved records.
-
-### Export Data
-
-Export the user's complete tracker data as:
-
-- Formatted Excel workbook
-- CSV ZIP package
-- Individual CSV files
-- Optional automatically populated Google Sheet
-
-The complete workbook can include:
-
-- Summary
-- Contracts
-- Ore Ledger
-- Ore Inventory
-- Commodity Ledger
-- Commodity Inventory
-
-## User Accounts and Security
-
-The application uses Supabase Authentication and Row Level Security.
-
-Account features include:
-
-- Email and password sign-in
-- New account registration
-- Password-reset email
-- Password update
-- Remembered email
-- Optional persistent login
-- Encrypted browser refresh-token storage
-- Display name
-- Profile image
-- Timezone selection
-- Secure sign-out
-
-Each user's private records are filtered by their Supabase user ID.
-
-Never commit `.streamlit/secrets.toml`, API tokens, cookie passwords, or service-account credentials to GitHub.
+- Authentication is handled by Supabase.
+- Private rows are associated with the authenticated user's Supabase user ID.
+- Row Level Security policies restrict access to user-owned records.
+- Application secrets are supplied through Streamlit Secrets and are not stored in GitHub.
+- `.streamlit/secrets.toml` is explicitly ignored by Git.
 
 ## Technology Stack
 
-- Python
-- Streamlit
-- Supabase
-- PostgreSQL
-- Pandas
-- Plotly
-- XlsxWriter
-- Google Sheets API
-- UEX API
-- SC Trade Tools
-- SC Craft Tools
-- Pillow
-- Encrypted Streamlit cookies
+| Layer | Technology |
+|---|---|
+| Application | Python, Streamlit |
+| Database | PostgreSQL via Supabase |
+| Authentication | Supabase Auth |
+| Data analysis | Pandas |
+| Visualization | Plotly |
+| Excel export | XlsxWriter |
+| External data | UEX, SC Trade Tools, SC Craft Tools |
+| Optional cloud export | Google Sheets API / gspread |
+| Image handling | Pillow |
+| Session persistence | Encrypted Streamlit cookie manager |
 
-## Project Structure
+## Repository Structure
 
 ```text
 star-citizen-tracker/
+├── .github/
+│   └── workflows/
+│       └── ci.yml
 ├── .streamlit/
 │   ├── config.toml
 │   └── secrets.toml.example
 ├── assets/
-│   ├── commodity_feature.jpg
-│   ├── contracts_banner.jpg
-│   ├── contracts_feature.jpg
-│   ├── dashboard_banner.jpg
-│   ├── edit_banner.jpg
-│   ├── export_banner.jpg
-│   ├── fleet_feature.jpg
-│   ├── hero_banner.jpg
-│   ├── ore_banner.jpg
-│   ├── ore_feature.jpg
-│   ├── records_banner.jpg
-│   ├── records_feature.jpg
-│   ├── sidebar_art.jpg
-│   └── star_citizen_logo_black.png
 ├── data/
 │   └── mining_locations.csv
+├── database/
+│   ├── schema.sql
+│   ├── migrations/
+│   │   └── schema_migration_*.sql
+│   └── verification/
+│       └── commodity_sales_verification.sql
+├── docs/
+│   └── screenshots/
+├── tests/
+│   └── offline_connection_tests.py
+├── .gitignore
+├── CHANGELOG.md
+├── README.md
 ├── app.py
-├── requirements.txt
-├── schema.sql
-├── schema_migration_v2.sql
-├── schema_migration_v3_blueprints.sql
-├── schema_migration_v3_blueprints_repair.sql
-├── schema_migration_v4_commodity_tracker.sql
-├── schema_migration_v5_profile_avatars.sql
-├── schema_migration_v6_commodity_math_repair.sql
-├── schema_migration_v7_ore_math_repair.sql
-├── schema_migration_v8_ore_schema_cache_repair.sql
-├── schema_migration_v9_loot_and_shops.sql
-├── commodity_sales_verification.sql
-└── README.md
+└── requirements.txt
 ```
 
-## Local Installation
+## Local Setup
 
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/star-citizen-tracker.git
+git clone https://github.com/Ticklrx3/star-citizen-tracker.git
 cd star-citizen-tracker
 ```
 
@@ -401,15 +144,8 @@ cd star-citizen-tracker
 Windows PowerShell:
 
 ```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-```
-
-macOS or Linux:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
 ```
 
 ### 3. Install dependencies
@@ -418,36 +154,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Configure Supabase
-
-Create a Supabase project.
-
-For a new database, run:
-
-```text
-schema.sql
-```
-
-Run the file in the Supabase SQL Editor.
-
-For an existing tracker database, apply only the migrations that have not already been run:
-
-```text
-schema_migration_v2.sql
-schema_migration_v3_blueprints.sql
-schema_migration_v4_commodity_tracker.sql
-schema_migration_v5_profile_avatars.sql
-schema_migration_v6_commodity_math_repair.sql
-schema_migration_v7_ore_math_repair.sql
-schema_migration_v8_ore_schema_cache_repair.sql
-schema_migration_v9_loot_and_shops.sql
-```
-
-Use `schema_migration_v3_blueprints_repair.sql` only when the original blueprint migration failed or the blueprint tables and policies require repair.
-
-Do not repeatedly run migrations that have already completed successfully unless the file explicitly uses safe repair logic.
-
-### 5. Configure Streamlit Secrets
+### 4. Configure secrets
 
 Copy:
 
@@ -461,443 +168,99 @@ to:
 .streamlit/secrets.toml
 ```
 
-Then add the required values:
+Then supply your own credentials locally. Never commit the real secrets file.
+
+Required values:
 
 ```toml
-SUPABASE_URL = "https://YOUR-PROJECT.supabase.co"
-SUPABASE_KEY = "your-supabase-anon-or-publishable-key"
-COOKIE_PASSWORD = "replace-with-a-long-random-secret"
-APP_PUBLIC_URL = "https://sc-tracker-tool.streamlit.app/"
+SUPABASE_URL = "..."
+SUPABASE_KEY = "..."
+COOKIE_PASSWORD = "..."
+APP_PUBLIC_URL = "http://localhost:8501/"
 ```
 
-Optional UEX live data:
+Optional integrations can also use `UEX_API_TOKEN`, `SC_TRADE_TOOLS_TOKEN`, and `GOOGLE_SERVICE_ACCOUNT_JSON`.
 
-```toml
-UEX_API_TOKEN = "your-private-uex-token"
-UEX_CLIENT_VERSION = "1.0.0"
-```
+### 5. Prepare the database
 
-Optional SC Trade Tools licensed data:
+For a fresh environment, review `database/schema.sql` and the ordered migrations in `database/migrations/` before running SQL against Supabase.
 
-```toml
-SC_TRADE_TOOLS_TOKEN = "your-private-sc-trade-tools-token"
-```
-
-Optional populated Google Sheets export:
-
-```toml
-GOOGLE_SERVICE_ACCOUNT_JSON = '''
-{
-  "type": "service_account",
-  "project_id": "your-project-id",
-  "private_key_id": "your-private-key-id",
-  "private_key": "-----BEGIN PRIVATE KEY-----\\nYOUR_PRIVATE_KEY\\n-----END PRIVATE KEY-----\\n",
-  "client_email": "service-account@your-project.iam.gserviceaccount.com",
-  "client_id": "your-client-id",
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-  "token_uri": "https://oauth2.googleapis.com/token",
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-  "client_x509_cert_url": "your-certificate-url"
-}
-'''
-```
-
-### 6. Configure Supabase Authentication URLs
-
-In Supabase:
+For the existing production database, **do not rebuild the database**. The latest required migration is:
 
 ```text
-Authentication → URL Configuration
+database/migrations/schema_migration_v10_contract_salvage_and_connections.sql
 ```
 
-Set the Site URL to:
+If that migration has already been successfully applied, no additional V21 database migration is required.
 
-```text
-https://sc-tracker-tool.streamlit.app/
-```
-
-Add this Redirect URL:
-
-```text
-https://sc-tracker-tool.streamlit.app/**
-```
-
-For local testing, also add:
-
-```text
-http://localhost:8501/**
-```
-
-### 7. Run locally
+### 6. Run locally
 
 ```bash
 streamlit run app.py
 ```
 
-Open:
+## Validation
 
-```text
-http://localhost:8501
+Compile the application:
+
+```bash
+python -m py_compile app.py
 ```
+
+Run the offline CRUD/connection contract tests:
+
+```bash
+python tests/offline_connection_tests.py
+```
+
+These tests use an in-memory Supabase-compatible query chain and do not modify the live database.
 
 ## Streamlit Community Cloud Deployment
 
-1. Push the project files to GitHub.
-2. Keep `app.py` in the repository root.
-3. Connect the repository to Streamlit Community Cloud.
-4. Set the entrypoint to `app.py`.
-5. Copy the private values into the app's Streamlit Secrets settings.
-6. Reboot the application after changing dependencies, Secrets, or database migrations.
+Deploy with:
 
-Do not upload the real `.streamlit/secrets.toml` file.
+- Repository: `Ticklrx3/star-citizen-tracker`
+- Branch: the branch being validated, such as `release-v1`
+- Entrypoint: `app.py`
 
-## Live Data and Refresh Behavior
+Add the real secret values in Streamlit Community Cloud's Secrets interface rather than GitHub.
 
-### UEX
+For a test deployment, set `APP_PUBLIC_URL` to the test Streamlit URL so password recovery and redirect behavior can be validated independently of production.
 
-UEX provides live mining and commodity information when `UEX_API_TOKEN` is configured.
+## Release Process
 
-The application caches supported live responses for approximately 14 minutes. The commodity market section can refresh every 15 minutes while the page remains open.
+1. Build and validate changes on a release branch.
+2. Confirm startup and authentication on a separate Streamlit test deployment.
+3. Test contracts, salvage, mining, commodities, saved records, dashboards, exports, avatars, and integrations.
+4. Merge the validated branch into `main`.
+5. Tag the public release using semantic versioning, for example `v1.0.0`.
 
-### SC Trade Tools
+## Screenshots
 
-Public directory data can be used without a private token.
+Add current application screenshots under `docs/screenshots/` and reference them here. Recommended views:
 
-A valid licensed token may unlock selected commodity transaction and market-report endpoints:
+- Dashboard
+- Contract + salvage workflow
+- Mining/Ore Ledger
+- Commodity tracker
+- Saved Records
+- Export workflow
 
-```toml
-SC_TRADE_TOOLS_TOKEN = "your-private-token"
-```
+This keeps the README focused on the product while making the repository useful as a professional portfolio project.
 
-Availability and permitted use depend on SC Trade Tools' current API access and terms.
+## Security
 
-### SC Craft Tools
+Do not commit:
 
-The Blueprint page embeds:
+- `.streamlit/secrets.toml`
+- Supabase keys that are intended to remain private
+- cookie encryption passwords
+- external API tokens
+- Google service-account credentials
+- exported user data
 
-```text
-https://sc-craft.tools/
-```
+If a credential is ever committed publicly, remove it from the repository and rotate/revoke it at the provider.
 
-Some browsers or providers may block embedded viewing. The application also provides an external-link option.
+## Disclaimer
 
-### Google Sheets
-
-Without a Google service account, download the Excel workbook and import it into Google Sheets.
-
-With `GOOGLE_SERVICE_ACCOUNT_JSON`, the app can create a populated Google Sheet automatically.
-
-## Database Migration Summary
-
-| File | Purpose |
-|---|---|
-| `schema.sql` | Complete database setup for a new deployment |
-| `schema_migration_v2.sql` | Adds ore quantity support |
-| `schema_migration_v3_blueprints.sql` | Creates the private blueprint tracker |
-| `schema_migration_v3_blueprints_repair.sql` | Repairs blueprint tables or policies when needed |
-| `schema_migration_v4_commodity_tracker.sql` | Creates the commodity transaction ledger |
-| `schema_migration_v5_profile_avatars.sql` | Adds profile-avatar storage and policies |
-| `schema_migration_v6_commodity_math_repair.sql` | Repairs commodity totals, cash effects, constraints, and triggers |
-| `schema_migration_v7_ore_math_repair.sql` | Repairs ore unit prices, values, cash effects, constraints, and triggers |
-| `schema_migration_v8_ore_schema_cache_repair.sql` | Guarantees missing ore columns exist, rebuilds the trigger and RLS policies, and refreshes the Supabase/PostgREST schema cache |
-| `schema_migration_v9_loot_and_shops.sql` | Adds the authenticated shared/private community loot table and its Row Level Security policies |
-
-
-
-### Version 8 ore schema-cache repair
-
-Version 7 referenced `quantity_scu` without guaranteeing that the column
-existed first. On a legacy database without that column, PostgreSQL aborted
-the transaction and rolled the entire migration back.
-
-Run `schema_migration_v8_ore_schema_cache_repair.sql` as one complete query.
-The migration creates every required ore column before referencing it,
-rebuilds the calculation trigger and Row Level Security policies, refreshes
-PostgREST's schema cache, and returns two verification results. The first
-result must list `quantity_scu`, `unit_price`, `total_value`, and
-`cash_effect`.
-
-## Troubleshooting
-
-### The app logs out after refreshing
-
-Confirm that:
-
-- `COOKIE_PASSWORD` is set and remains unchanged
-- The user selected the keep-signed-in option
-- Browser cookies are allowed
-- The application is being opened from the configured `APP_PUBLIC_URL`
-
-Changing `COOKIE_PASSWORD` invalidates previously stored encrypted cookies.
-
-### Password-reset links return to the wrong page
-
-Update:
-
-```toml
-APP_PUBLIC_URL = "https://sc-tracker-tool.streamlit.app/"
-```
-
-Then confirm the same address is permitted in Supabase Authentication URL Configuration.
-
-### Commodity sales do not appear
-
-Run:
-
-```text
-schema_migration_v6_commodity_math_repair.sql
-```
-
-Then use:
-
-```text
-commodity_sales_verification.sql
-```
-
-to confirm that Bought, Sold, and Lost records are stored in Supabase.
-
-The verification query should show `incomplete_math_rows = 0` after all rows have valid quantities and prices.
-
-### Ore inventory shows 0 SCU
-
-Run:
-
-```text
-schema_migration_v7_ore_math_repair.sql
-schema_migration_v8_ore_schema_cache_repair.sql
-schema_migration_v9_loot_and_shops.sql
-```
-
-Older records that stored only aUEC value cannot be assigned an accurate SCU quantity automatically. Edit those records under:
-
-```text
-Saved Records → Manage Records → Ore Entry
-```
-
-### Blueprints do not load
-
-Confirm the blueprint migration completed.
-
-Use:
-
-```text
-schema_migration_v3_blueprints_repair.sql
-```
-
-when the original migration failed or the database table is missing.
-
-The external SC Craft Tools site may also block iframe embedding. Use the external-link button when necessary.
-
-### Google Sheets opens blank
-
-Automatic populated Sheets require `GOOGLE_SERVICE_ACCOUNT_JSON`.
-
-Without that secret, download the Excel workbook and import it into Google Sheets manually.
-
-### A control has a missing outline
-
-Confirm that the latest `app.py` and `.streamlit/config.toml` are deployed together, then reboot the Streamlit app.
-
-The current interface draws a complete perimeter around the Streamlit control wrapper to avoid clipped top and bottom borders.
-
-
-
-### Commodity listing identification update
-
-UEX terminal tables now retain and display the commodity name on every row.
-The **Best Places to Buy**, **Best Places to Sell**, **All Matching Terminal
-Listings**, and filtered market CSV include a dedicated `Commodity` column.
-The currently selected commodity is used as a fallback when the UEX price
-response does not return a commodity-name field.
-
-
-
-### Number-input alignment and live ore calculation update
-
-Number-input help icons are now styled separately from decrement and increment
-controls, preventing tooltip buttons from stretching into rectangular boxes.
-Paired numeric fields align along the same bottom edge throughout the Ore
-Ledger entry panel.
-
-The Ore Ledger entry area now uses live Streamlit widgets rather than a form,
-so the verified SCU, unit-price, total-value, and cash-effect calculation
-updates immediately as the user changes a value.
-
-
-
-### Standard green and red chart colors
-
-Dashboard charts now use conventional data colors while the surrounding app
-retains its chartreuse interface theme. Positive values, earnings, revenue,
-and mined activity use standard green. Negative values, costs, losses, and
-sold-series comparisons use standard red.
-
-
-
-### Combined commodity purchase and sale entry
-
-The Commodity Trade Tracker now uses one combined entry panel for quantity,
-price, fees, purchase or departure location, sale or destination location,
-shipment reference, and notes. The prior activity dropdown and duplicate save
-buttons were removed.
-
-Two action buttons appear together at the bottom:
-
-- **Save Commodity Purchase**
-- **Save Commodity Sale**
-
-Either button saves every field in the combined panel. When **Shipment
-destroyed or lost** is selected, either action button records the entry as a
-lost or destroyed shipment.
-
-
-
-### Automatic graph scaling and category colors
-
-Dashboard bar charts now calculate their axis limits from the current values
-on every Streamlit rerun. Additional range is reserved for value labels, so
-larger totals do not clip against the plot boundary or legend.
-
-Green and red are reserved for signed monetary meaning. Positive money uses
-green and negative money uses red. Categorical series use distinct colors:
-
-- Contracts: blue
-- Ore and mining categories: orange or teal
-- Commodities and other categories: purple
-- Ore actions use separate teal, orange, and purple series
-
-## Major Update History
-
-### Account and session upgrades
-
-- Added remembered email
-- Added encrypted persistent login
-- Added password recovery
-- Added change-password controls
-- Added profile name, profile picture, and timezone settings
-- Added authentication-screen toolbar spacing
-- Restored safe timezone fallback behavior
-
-### Dashboard and analytics upgrades
-
-- Added contracts, ore, and commodities to combined earnings
-- Added commodity performance graphs
-- Added source-contribution reporting
-- Added overall spending and net-profit summaries
-- Added Dashboard shortcut cards
-- Added filters and search
-- Corrected date and timezone rendering
-
-### Commodity upgrades
-
-- Added UEX and SC Trade Tools market intelligence
-- Added route planning
-- Added buy, sell, and lost-shipment records
-- Added on-hand inventory
-- Added Saved Records support
-- Added database read-back verification
-- Added verified quantity, unit price, cargo value, and cash-effect math
-- Added Excel, CSV, and Google Sheets commodity exports
-
-### Ore upgrades
-
-- Added SCU inventory
-- Added price-per-SCU and total-value entry methods
-- Added verified value and cash effect
-- Added legacy-record warnings
-- Added ore database triggers and constraints
-- Added Saved Records management and exports
-
-### Blueprint upgrades
-
-- Added live SC Craft Tools database
-- Added personal blueprint ownership tracker
-- Added planned builds and material readiness
-- Added profile-isolated Supabase storage
-
-### Interface upgrades
-
-- Replaced the original blue palette with chartreuse and green shades
-- Added the sampled accent color `#98FB17`
-- Removed button and tab gradients
-- Removed button and tab shadows
-- Improved text contrast
-- Added visible control outlines
-- Added responsive layouts
-- Replaced large success alerts with compact inline confirmations
-
-## Data and Rights Notice
-
-This is an unofficial fan-made tool and is not affiliated with, sponsored by, or endorsed by Cloud Imperium Games or Roberts Space Industries.
-
-Star Citizen, Roberts Space Industries, Cloud Imperium, and related names, logos, game imagery, and trademarks belong to their respective owners.
-
-UEX, SC Trade Tools, and SC Craft Tools are independent third-party services. Their data, branding, availability, licensing requirements, and terms remain controlled by those providers.
-
-Only use images, logos, screenshots, API data, or other assets when you have permission or a lawful basis to do so. Replace repository assets when required by the applicable owner or platform.
-
-Market values, locations, spawn information, routes, and game mechanics can change after a Star Citizen update. Verify important information before making in-game decisions.
-
-## Privacy and Security Notes
-
-- User data is stored in Supabase
-- Row Level Security is used to isolate each user's records
-- Passwords are handled by Supabase Authentication
-- Refresh tokens are stored in an encrypted browser cookie only when the user chooses to remain signed in
-- API keys and service-account credentials must remain in Streamlit Secrets
-- Do not commit private credentials to GitHub
-- Rotate any token that has been exposed publicly
-
-## Status
-
-The tracker is actively evolving alongside Star Citizen, UEX, SC Trade Tools, SC Craft Tools, Streamlit, and Supabase.
-
-Because third-party APIs and game data can change, occasional maintenance may be required after provider updates or major game patches.
-
-
-## Modern product interface v2
-
-This release replaces legacy banner imagery with a text-and-icon design system and modernizes the complete Streamlit interface. It adds stronger visual hierarchy, larger typography, visible control borders, elevated cards, segmented tabs, improved data tables, refined navigation, responsive layouts, and app-style list rows. Supabase tables, migrations, authentication, UEX integrations, calculations, and saved user data remain unchanged.
-
-
-## Dashboard Card Image and Icon Update
-
-The Dashboard workspace cards use the following packaged images:
-
-- Mining Locations: `assets/mining_locations_feature.jpg`
-- Blueprints: `assets/blueprints_feature.jpg`
-- Loot & Shops: `assets/loot_shops_feature.jpg`
-- Saved Records: `assets/saved_records_feature.jpg`
-- Export Data: `assets/export_data_feature.jpg`
-
-The image files are normalized to a consistent 1600 × 520 presentation
-format with responsive cover cropping.
-
-The plain character symbols were replaced with local SVG interface icons in
-`assets/icons/`. The icon files are distributed under the MIT License included
-in that directory. The application does not depend on an external icon CDN.
-
-
-## Dashboard Rendering Fix
-
-Dashboard card JPEGs are rendered with Streamlit's native `st.image` component
-instead of being embedded as large base64 strings inside a Markdown block.
-This prevents HTML class names and markup fragments from appearing visibly in
-the cards while preserving the selected images, SVG icons, buttons, and
-responsive card styling.
-
-
-## App-Wide Icon System
-
-The application now uses one consistent local SVG icon system across:
-
-- Sidebar navigation
-- Dashboard workspace cards
-- Dashboard earnings summary cards
-- Profile and sign-out controls
-- Workspace action buttons
-- Browser and application tab branding
-
-All SVG files are stored under `assets/icons/`. The icon files are distributed
-under the included MIT License and do not require an external CDN or runtime
-internet request.
+This is an unofficial fan-made project and is not affiliated with or endorsed by Cloud Imperium Games or Roberts Space Industries. Game names and related trademarks belong to their respective owners.

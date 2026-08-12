@@ -1,3 +1,44 @@
+# Streamlit secrets / credentials
 .streamlit/secrets.toml
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+service-account*.json
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local data / exports / logs
+*.log
+*.sqlite
+*.sqlite3
+*.db
+exports/
+tmp/
+temp/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
