@@ -8443,6 +8443,100 @@ def render_dashboard_summary(
     )
 
 
+def select_dashboard_chart(chart_index: int) -> None:
+    """Select one dashboard analytics view without rerunning the full app."""
+    st.session_state["dashboard_chart_index"] = int(chart_index)
+    # Chart selection is genuine user activity for authenticated users.
+    mark_authenticated_activity()
+
+
+@st.fragment
+def render_dashboard_chart_viewer(
+    dashboard_charts: list[dict[str, Any]],
+) -> None:
+    """Render the full-width chart switcher as an independent fragment.
+
+    Interacting with these buttons reruns only this fragment, so the signed-in
+    dashboard does not refetch Supabase data or rebuild the rest of the page.
+    The same component is used in public demo mode and authenticated mode.
+    """
+    chart_count = len(dashboard_charts)
+    if chart_count <= 0:
+        return
+
+    current_chart_index = int(
+        st.session_state.get("dashboard_chart_index", 0)
+    ) % chart_count
+
+    with st.container(border=True):
+        st.markdown(
+            """
+            <div style="color:#8FA7C4; font-size:0.78rem; font-weight:700;
+                        letter-spacing:0.08em; margin-bottom:0.45rem;">
+                SELECT ANALYTICS VIEW
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # Direct-access buttons are intentionally kept inside this fragment.
+        # Streamlit reruns only the fragment when one is clicked, avoiding a
+        # full dashboard/database refresh just to switch visualizations.
+        for row_start in range(0, chart_count, 3):
+            row_items = dashboard_charts[row_start:row_start + 3]
+            button_columns = st.columns(len(row_items))
+            for column_offset, (button_column, chart) in enumerate(
+                zip(button_columns, row_items)
+            ):
+                chart_index = row_start + column_offset
+                with button_column:
+                    st.button(
+                        chart["button_label"],
+                        key=f"dashboard_chart_select_{chart_index}",
+                        type=(
+                            "primary"
+                            if chart_index == current_chart_index
+                            else "secondary"
+                        ),
+                        width="stretch",
+                        on_click=select_dashboard_chart,
+                        args=(chart_index,),
+                    )
+
+        # Button callbacks update Session State before the fragment reruns, so
+        # the selected button and chart both update in the same lightweight pass.
+        current_chart_index = int(
+            st.session_state.get("dashboard_chart_index", 0)
+        ) % chart_count
+        current_chart = dashboard_charts[current_chart_index]
+
+        analytics_heading(
+            current_chart["title"],
+            current_chart["description"],
+            current_chart["eyebrow"],
+        )
+
+        current_figure = current_chart["figure"]
+        current_figure.update_layout(
+            height=560,
+            autosize=True,
+        )
+        st.plotly_chart(
+            current_figure,
+            width="stretch",
+            config={
+                "displayModeBar": False,
+                "responsive": True,
+            },
+            key=f"dashboard_chart_view_{current_chart_index}",
+        )
+
+        st.caption(
+            f"Viewing {current_chart['button_label']}. "
+            "Choose any analytics button above or hover the chart for exact values."
+        )
+
+
 def dashboard_page() -> None:
     dashboard_hero()
 
@@ -9250,76 +9344,9 @@ def dashboard_page() -> None:
         },
     ]
 
-    chart_count = len(dashboard_charts)
-    current_chart_index = int(
-        st.session_state.get("dashboard_chart_index", 0)
-    ) % chart_count
-
-    with st.container(border=True):
-        st.markdown(
-            """
-            <div style="color:#8FA7C4; font-size:0.78rem; font-weight:700;
-                        letter-spacing:0.08em; margin-bottom:0.45rem;">
-                SELECT ANALYTICS VIEW
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        # Two rows of three named buttons keep the controls readable on narrow
-        # screens while still allowing direct access to every analytics view.
-        for row_start in (0, 3):
-            button_columns = st.columns(3)
-            for column_offset, button_column in enumerate(button_columns):
-                chart_index = row_start + column_offset
-                chart = dashboard_charts[chart_index]
-                with button_column:
-                    if st.button(
-                        chart["button_label"],
-                        key=f"dashboard_chart_select_{chart_index}",
-                        type=(
-                            "primary"
-                            if chart_index == current_chart_index
-                            else "secondary"
-                        ),
-                        width="stretch",
-                    ):
-                        if chart_index != current_chart_index:
-                            st.session_state["dashboard_chart_index"] = chart_index
-                            st.rerun()
-
-        current_chart_index = int(
-            st.session_state.get("dashboard_chart_index", 0)
-        ) % chart_count
-        current_chart = dashboard_charts[current_chart_index]
-
-        analytics_heading(
-            current_chart["title"],
-            current_chart["description"],
-            current_chart["eyebrow"],
-        )
-
-        # All charts share one roomy viewer. Exact values remain available in
-        # Plotly hover tooltips even when compact labels are used on the graph.
-        current_figure = current_chart["figure"]
-        current_figure.update_layout(
-            height=560,
-            autosize=True,
-        )
-        st.plotly_chart(
-            current_figure,
-            width="stretch",
-            config={
-                "displayModeBar": False,
-                "responsive": True,
-            },
-            key=f"dashboard_chart_view_{current_chart_index}",
-        )
-
-        st.caption(
-            f"Viewing {current_chart['button_label']}. "
-            "Choose another analytics button above or hover the chart for exact values."
-        )
+    # Render the shared analytics viewer in an independent Streamlit fragment.
+    # This applies to both demo mode and the normal signed-in dashboard.
+    render_dashboard_chart_viewer(dashboard_charts)
 
     st.markdown(
         """
