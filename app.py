@@ -52,6 +52,8 @@ SC_CRAFT_TOOLS_URL = "https://sc-craft.tools/"
 AVATAR_BUCKET = "avatars"
 AVATAR_SIZE = (512, 512)
 MAX_AVATAR_BYTES = 2 * 1024 * 1024
+DEFAULT_INACTIVITY_TIMEOUT_MINUTES = 90
+INACTIVITY_CHECK_INTERVAL = "30s"
 
 USER_OWNED_TABLES = frozenset(
     {
@@ -70,6 +72,179 @@ CONNECTION_CHECK_TABLES = (
     ("Blueprint Tracker", "blueprint_tracker"),
     ("Loot & Shops", "loot_locations"),
 )
+
+DEMO_USER_ID = "demo-preview-user"
+DEMO_USER_EMAIL = "demo@starcitizentracker.local"
+DEMO_USER_NAME = "Recruiter Preview"
+
+
+def is_demo_mode() -> bool:
+    """Return True when the public, session-only recruiter preview is active."""
+    return bool(st.session_state.get("demo_mode", False))
+
+
+def _demo_now() -> datetime:
+    return datetime.now(ZoneInfo(APP_TIMEZONE))
+
+
+def _demo_date(days_ago: int, hour: int = 18) -> str:
+    value = _demo_now() - timedelta(days=days_ago)
+    return value.replace(hour=hour, minute=0, second=0, microsecond=0).isoformat()
+
+
+def build_demo_store() -> dict[str, pd.DataFrame]:
+    """Create realistic fictional records used only inside the current browser session."""
+    contracts = pd.DataFrame([
+        {"id": 1001, "user_id": DEMO_USER_ID, "date_saved": _demo_date(1), "contract_name": "Critical Threat Beacon", "contract_type": "Service Beacon - Combat", "offer_group": "General", "system_name": "Stanton", "total_payout": 185000, "salvage_value": 42000, "expenses": 12000, "crew_members": 2, "net_payout": 215000, "individual_share": 107500, "notes": "Recovered components after engagement."},
+        {"id": 1002, "user_id": DEMO_USER_ID, "date_saved": _demo_date(3), "contract_name": "Hammerhead Cleanup", "contract_type": "Salvage", "offer_group": "General", "system_name": "Stanton", "total_payout": 95000, "salvage_value": 168000, "expenses": 26000, "crew_members": 2, "net_payout": 237000, "individual_share": 118500, "notes": "Hull scraping and component recovery."},
+        {"id": 1003, "user_id": DEMO_USER_ID, "date_saved": _demo_date(5), "contract_name": "ERT Group Warrant", "contract_type": "Bounty Hunting", "offer_group": "General", "system_name": "Stanton", "total_payout": 112500, "salvage_value": 27500, "expenses": 8500, "crew_members": 1, "net_payout": 131500, "individual_share": 131500, "notes": "Solo heavy-fighter operation."},
+        {"id": 1004, "user_id": DEMO_USER_ID, "date_saved": _demo_date(8), "contract_name": "Bulk Titanium Run", "contract_type": "Hauling - Bulk Grade", "offer_group": "General", "system_name": "Stanton", "total_payout": 146000, "salvage_value": 0, "expenses": 18000, "crew_members": 1, "net_payout": 128000, "individual_share": 128000, "notes": "Completed without cargo loss."},
+        {"id": 1005, "user_id": DEMO_USER_ID, "date_saved": _demo_date(12), "contract_name": "Security Post Kareah", "contract_type": "Mercenary", "offer_group": "General", "system_name": "Stanton", "total_payout": 87000, "salvage_value": 12000, "expenses": 6000, "crew_members": 2, "net_payout": 93000, "individual_share": 46500, "notes": "Recovered weapons and armor."},
+        {"id": 1006, "user_id": DEMO_USER_ID, "date_saved": _demo_date(17), "contract_name": "Cargo Recovery - Lyria", "contract_type": "Cargo Recovery", "offer_group": "General", "system_name": "Stanton", "total_payout": 72000, "salvage_value": 34000, "expenses": 4500, "crew_members": 1, "net_payout": 101500, "individual_share": 101500, "notes": "Recovered mission cargo and legal salvage."},
+        {"id": 1007, "user_id": DEMO_USER_ID, "date_saved": _demo_date(23), "contract_name": "Medical Rescue Beacon", "contract_type": "Service Beacon - Medical", "offer_group": "General", "system_name": "Stanton", "total_payout": 35000, "salvage_value": 0, "expenses": 2500, "crew_members": 1, "net_payout": 32500, "individual_share": 32500, "notes": "Successful player extraction."},
+    ])
+
+    ore = pd.DataFrame([
+        {"id": 2001, "user_id": DEMO_USER_ID, "date_saved": _demo_date(2), "action": "Mined", "ore_name": "Quantanium", "quantity_scu": 18.5, "unit_price": 0, "total_value": 0, "location": "Lyria", "notes": "High-purity cluster."},
+        {"id": 2002, "user_id": DEMO_USER_ID, "date_saved": _demo_date(4), "action": "Sold", "ore_name": "Quantanium", "quantity_scu": 12.0, "unit_price": 27100, "total_value": 325200, "location": "Area18", "notes": "Refined batch sale."},
+        {"id": 2003, "user_id": DEMO_USER_ID, "date_saved": _demo_date(6), "action": "Mined", "ore_name": "Bexalite", "quantity_scu": 24.5, "unit_price": 0, "total_value": 0, "location": "Aberdeen", "notes": "Mixed deposit extraction."},
+        {"id": 2004, "user_id": DEMO_USER_ID, "date_saved": _demo_date(10), "action": "Sold", "ore_name": "Bexalite", "quantity_scu": 16.0, "unit_price": 12400, "total_value": 198400, "location": "Lorville", "notes": "Partial inventory sale."},
+        {"id": 2005, "user_id": DEMO_USER_ID, "date_saved": _demo_date(14), "action": "Mined", "ore_name": "Taranite", "quantity_scu": 31.0, "unit_price": 0, "total_value": 0, "location": "Daymar", "notes": "MOLE crew run."},
+        {"id": 2006, "user_id": DEMO_USER_ID, "date_saved": _demo_date(19), "action": "Bought", "ore_name": "Gold", "quantity_scu": 20.0, "unit_price": 6400, "total_value": 128000, "location": "Shubin Mining Facility", "notes": "Trade inventory."},
+        {"id": 2007, "user_id": DEMO_USER_ID, "date_saved": _demo_date(21), "action": "Sold", "ore_name": "Gold", "quantity_scu": 20.0, "unit_price": 7900, "total_value": 158000, "location": "New Babbage", "notes": "Commodity-style ore trade."},
+    ])
+
+    commodities = pd.DataFrame([
+        {"id": 3001, "user_id": DEMO_USER_ID, "date_saved": _demo_date(1), "commodity_name": "Beryl", "action": "Bought", "quantity_scu": 96, "unit_price": 2230, "fees": 0, "total_value": 214080, "origin": "Shubin Mining Facility SAL-2", "destination": "Orison", "shipment_reference": "BER-0812-A", "notes": "Freelance cargo run."},
+        {"id": 3002, "user_id": DEMO_USER_ID, "date_saved": _demo_date(1, 21), "commodity_name": "Beryl", "action": "Sold", "quantity_scu": 96, "unit_price": 2735, "fees": 3200, "total_value": 262560, "origin": "Shubin Mining Facility SAL-2", "destination": "Orison", "shipment_reference": "BER-0812-A", "notes": "Completed same-day delivery."},
+        {"id": 3003, "user_id": DEMO_USER_ID, "date_saved": _demo_date(7), "commodity_name": "Titanium", "action": "Bought", "quantity_scu": 128, "unit_price": 810, "fees": 0, "total_value": 103680, "origin": "Arial", "destination": "Lorville", "shipment_reference": "TIT-0805-B", "notes": "Bulk cargo."},
+        {"id": 3004, "user_id": DEMO_USER_ID, "date_saved": _demo_date(7, 22), "commodity_name": "Titanium", "action": "Sold", "quantity_scu": 128, "unit_price": 1190, "fees": 1500, "total_value": 152320, "origin": "Arial", "destination": "Lorville", "shipment_reference": "TIT-0805-B", "notes": "Profitable bulk delivery."},
+        {"id": 3005, "user_id": DEMO_USER_ID, "date_saved": _demo_date(13), "commodity_name": "Agricium", "action": "Bought", "quantity_scu": 42, "unit_price": 24800, "fees": 0, "total_value": 1041600, "origin": "Mining Outpost", "destination": "Area18", "shipment_reference": "AGR-0730-C", "notes": "High-value cargo."},
+        {"id": 3006, "user_id": DEMO_USER_ID, "date_saved": _demo_date(13, 23), "commodity_name": "Agricium", "action": "Lost / Destroyed", "quantity_scu": 8, "unit_price": 24800, "fees": 0, "total_value": 198400, "origin": "Mining Outpost", "destination": "Area18", "shipment_reference": "AGR-0730-C", "notes": "Partial cargo loss after interdiction."},
+        {"id": 3007, "user_id": DEMO_USER_ID, "date_saved": _demo_date(12), "commodity_name": "Agricium", "action": "Sold", "quantity_scu": 34, "unit_price": 28600, "fees": 4200, "total_value": 972400, "origin": "Mining Outpost", "destination": "Area18", "shipment_reference": "AGR-0730-C", "notes": "Remaining cargo delivered."},
+    ])
+
+    blueprints = pd.DataFrame([
+        {"id": 4001, "user_id": DEMO_USER_ID, "date_saved": _demo_date(3), "blueprint_name": "Industrial Component Package", "blueprint_category": "Components", "blueprint_status": "In Progress", "source_location": "Pyro", "copies_owned": 1, "target_builds": 2, "materials": {"Bexalite": 6.0, "Taranite": 8.0, "Gold": 4.0}, "notes": "Fictional demonstration blueprint."},
+        {"id": 4002, "user_id": DEMO_USER_ID, "date_saved": _demo_date(15), "blueprint_name": "Vehicle Upgrade Kit", "blueprint_category": "Vehicle", "blueprint_status": "Ready", "source_location": "Stanton", "copies_owned": 2, "target_builds": 1, "materials": {"Bexalite": 3.0, "Gold": 2.0}, "notes": "Fictional demonstration blueprint."},
+    ])
+
+    loot = pd.DataFrame([
+        {"id": 5001, "user_id": DEMO_USER_ID, "date_saved": _demo_date(2), "submitted_by": DEMO_USER_NAME, "item_name": "FS-9 LMG", "category": "Weapons", "acquisition_type": "Looted", "system_name": "Stanton", "location_name": "Security Post Kareah", "sub_location": "Equipment locker", "container_type": "Red crate", "rarity": "Uncommon", "mission_or_event": "Mercenary", "patch_version": "Demo", "verification_status": "Verified", "last_verified": _demo_date(2), "visibility": "Shared", "notes": "Demonstration location only."},
+        {"id": 5002, "user_id": DEMO_USER_ID, "date_saved": _demo_date(5), "submitted_by": DEMO_USER_NAME, "item_name": "Artimex Armor", "category": "Armor", "acquisition_type": "Looted", "system_name": "Stanton", "location_name": "Hurston Bunker", "sub_location": "Final room", "container_type": "NPC loot", "rarity": "Rare", "mission_or_event": "Bunker", "patch_version": "Demo", "verification_status": "Verified", "last_verified": _demo_date(5), "visibility": "Shared", "notes": "Demonstration location only."},
+        {"id": 5003, "user_id": DEMO_USER_ID, "date_saved": _demo_date(11), "submitted_by": DEMO_USER_NAME, "item_name": "Demeco LMG", "category": "Weapons", "acquisition_type": "Purchased", "system_name": "Stanton", "location_name": "New Babbage", "sub_location": "Plaza", "container_type": "Shop", "rarity": "Common", "mission_or_event": "", "patch_version": "Demo", "verification_status": "Verified", "last_verified": _demo_date(11), "visibility": "Shared", "notes": "Demonstration record only."},
+    ])
+
+    return {
+        "contracts": contracts,
+        "ore_transactions": ore,
+        "commodity_transactions": commodities,
+        "blueprint_tracker": blueprints,
+        "loot_locations": loot,
+    }
+
+
+def ensure_demo_store() -> dict[str, pd.DataFrame]:
+    if "demo_store" not in st.session_state:
+        st.session_state.demo_store = build_demo_store()
+    return st.session_state.demo_store
+
+
+def start_demo_mode() -> None:
+    """Create a fictional identity and isolated in-memory dataset."""
+    # A portfolio visitor must be able to enter the demo immediately, even
+    # while the encrypted persistent-login component is still initializing.
+    st.session_state.pop("last_activity_at", None)
+    st.session_state.demo_mode = True
+    st.session_state.demo_store = build_demo_store()
+    st.session_state.user_id = DEMO_USER_ID
+    st.session_state.user_email = DEMO_USER_EMAIL
+    st.session_state.user_display_name = DEMO_USER_NAME
+    st.session_state.user_callsign = "Portfolio Visitor"
+    st.session_state.user_bio = "Interactive public preview using fictional, session-only data."
+    st.session_state.user_avatar_url = ""
+    st.session_state.user_avatar_path = ""
+    st.session_state.user_created_at = _demo_date(60)
+    st.session_state.selected_timezone = DEFAULT_TIMEZONE
+    st.session_state.nav_page = "Dashboard"
+
+
+def exit_demo_mode() -> None:
+    """Remove all demo-only state and return to the public login screen."""
+    for key in (
+        "demo_mode", "demo_store", "user_id", "user_email",
+        "user_display_name", "user_callsign", "user_bio",
+        "user_avatar_url", "user_avatar_path", "user_created_at",
+        "nav_page", "commodity_tracker_ready", "commodity_tracker_error",
+        "blueprint_tracker_ready", "blueprint_tracker_error",
+    ):
+        st.session_state.pop(key, None)
+
+
+def _demo_insert(table_name: str, payload: dict[str, Any]) -> dict[str, Any]:
+    store = ensure_demo_store()
+    frame = store.get(table_name, pd.DataFrame()).copy()
+    existing_ids = pd.to_numeric(
+        frame.get("id", pd.Series(dtype=float)),
+        errors="coerce",
+    ).dropna()
+    next_id = (int(existing_ids.max()) if not existing_ids.empty else 0) + 1
+    row = {**payload, "id": next_id, "user_id": DEMO_USER_ID, "date_saved": _demo_now().isoformat()}
+    store[table_name] = pd.concat([pd.DataFrame([row]), frame], ignore_index=True, sort=False)
+    st.session_state.demo_store = store
+    return row
+
+
+def _demo_update(table_name: str, record_id: int, payload: dict[str, Any]) -> None:
+    store = ensure_demo_store()
+    frame = store.get(table_name, pd.DataFrame()).copy()
+    if frame.empty or "id" not in frame.columns:
+        return
+    mask = pd.to_numeric(frame["id"], errors="coerce").fillna(-1).astype(int) == int(record_id)
+    matching_indexes = frame.index[mask].tolist()
+    for key, value in payload.items():
+        if key not in frame.columns:
+            frame[key] = None
+        for index in matching_indexes:
+            frame.at[index, key] = value
+    store[table_name] = frame
+    st.session_state.demo_store = store
+
+
+def _demo_delete(table_name: str, record_id: int) -> None:
+    store = ensure_demo_store()
+    frame = store.get(table_name, pd.DataFrame()).copy()
+    if not frame.empty and "id" in frame.columns:
+        mask = pd.to_numeric(frame["id"], errors="coerce").fillna(-1).astype(int) != int(record_id)
+        store[table_name] = frame.loc[mask].reset_index(drop=True)
+        st.session_state.demo_store = store
+
+
+def demo_mode_banner() -> None:
+    st.info(
+        "DEMO MODE — You are viewing fictional sample data. Changes made here "
+        "exist only in this browser session and never touch the production database.",
+        icon="🧪",
+    )
+
+
+def demo_profile_page() -> None:
+    page_banner(
+        "hero_banner.jpg",
+        "Recruiter Preview Profile",
+        "This profile exists only for the public interactive demonstration.",
+        "Demo Identity",
+    )
+    demo_mode_banner()
+    st.markdown("### Preview Account")
+    st.write(f"**Display name:** {DEMO_USER_NAME}")
+    st.write("**Callsign:** Portfolio Visitor")
+    st.write("**Data source:** Fictional in-memory sample dataset")
+    st.write("**Database access:** Disabled")
+    st.caption(
+        "Account settings, password changes, avatar uploads, and connection "
+        "diagnostics are intentionally disabled in the public preview."
+    )
 
 
 def selected_timezone() -> str:
@@ -3939,6 +4114,9 @@ def get_cookie_manager() -> EncryptedCookieManager | None:
     except KeyError:
         return None
 
+    if is_demo_mode():
+        return None
+
     if not cookie_password or st.session_state.get("skip_cookie_restore"):
         return None
 
@@ -3953,22 +4131,61 @@ def get_cookie_manager() -> EncryptedCookieManager | None:
         if cookies.ready():
             return cookies
 
-        # The cookie component is asynchronous. Stop before rendering the
-        # login page so a refresh is not mistaken for a signed-out session.
+        # The encrypted-cookie component initializes asynchronously. Rather
+        # than showing visitors a technical loading screen, render the public
+        # portfolio landing experience while the saved-session check runs.
         auth_screen_top_spacer()
-        with st.container(border=True):
-            st.markdown("### Restoring your secure session")
-            st.caption(
-                "The app is loading the encrypted browser cookie used to keep "
-                "you signed in after a refresh."
-            )
-            st.info("This normally completes automatically in a moment.")
+        page_banner(
+            "hero_banner.jpg",
+            "Welcome to Star Citizen Tracker",
+            (
+                "Explore an interactive operations platform for contracts, "
+                "mining, trading, records, and performance analytics."
+            ),
+            "Portfolio Demonstration",
+        )
+
+        st.markdown("### Explore the project")
+        st.caption(
+            "Open the complete recruiter preview instantly with fictional, "
+            "session-only data. No account is required and the production "
+            "database remains protected."
+        )
+        demo_col, sign_in_col = st.columns(2)
+        with demo_col:
             if st.button(
-                "Continue to sign in instead",
+                "Explore Interactive Demo",
+                key="launch_public_demo_cookie_loading",
+                type="primary",
+                width="stretch",
+            ):
+                start_demo_mode()
+                st.rerun()
+        with sign_in_col:
+            if st.button(
+                "Sign in or create an account",
+                key="skip_cookie_restore_from_welcome",
                 width="stretch",
             ):
                 st.session_state.skip_cookie_restore = True
                 st.rerun()
+
+        st.caption(
+            "Demo changes stay only in the current browser session and never "
+            "read from or write to production Supabase records."
+        )
+        st.divider()
+
+        with st.container(border=True):
+            st.markdown("#### Checking for a saved session")
+            st.caption(
+                "If you previously selected Keep me signed in, the app is "
+                "securely checking your encrypted browser session now."
+            )
+            st.info(
+                "This normally completes automatically. You can use the demo "
+                "or continue to sign in without waiting."
+            )
         st.stop()
     except Exception as exc:
         st.session_state.pop("cookie_manager", None)
@@ -4062,6 +4279,10 @@ def set_authenticated_user(user: Any, fallback_email: str = "") -> None:
     created_at = getattr(user, "created_at", None)
     if created_at:
         st.session_state.user_created_at = str(created_at)
+
+    # Start/reset the inactivity clock whenever authentication succeeds or a
+    # persistent session is restored.
+    st.session_state.last_activity_at = time.time()
 
 
 def profile_initials(name: str, email: str = "") -> str:
@@ -4754,6 +4975,7 @@ def remember_authenticated_session(
     else:
         cookies.pop(COOKIE_REFRESH_TOKEN, None)
     cookies.save()
+    st.session_state.pop("block_cookie_restore", None)
     # Give the browser component a moment to persist the encrypted value
     # before the Streamlit rerun begins.
     time.sleep(0.20)
@@ -4765,6 +4987,12 @@ def restore_login_from_cookie(
 ) -> None:
     """Restore a Supabase session after a full browser refresh."""
     if cookies is None or "user_id" in st.session_state:
+        return
+
+    # After an inactivity logout, keep the user signed out even if the browser
+    # has not finished deleting the old encrypted refresh token yet. A fresh
+    # successful sign-in clears this guard.
+    if st.session_state.get("block_cookie_restore"):
         return
 
     refresh_token = cookies.get(COOKIE_REFRESH_TOKEN)
@@ -4808,8 +5036,84 @@ def clear_login_state() -> None:
         "password_recovery_active",
         "recovery_error",
         "skip_cookie_restore",
+        "last_activity_at",
     ):
         st.session_state.pop(key, None)
+
+
+def inactivity_timeout_minutes() -> int:
+    """Return the configured authenticated-user inactivity timeout."""
+    try:
+        raw_value = st.secrets["INACTIVITY_TIMEOUT_MINUTES"]
+    except KeyError:
+        raw_value = DEFAULT_INACTIVITY_TIMEOUT_MINUTES
+
+    try:
+        minutes = int(raw_value)
+    except (TypeError, ValueError):
+        minutes = DEFAULT_INACTIVITY_TIMEOUT_MINUTES
+
+    # Keep accidental configuration values within a sensible range. A value
+    # of zero disables automatic inactivity logout entirely.
+    if minutes <= 0:
+        return 0
+    return max(1, min(minutes, 240))
+
+
+def mark_authenticated_activity() -> None:
+    """Record a full-app interaction without counting timer-only reruns."""
+    if "user_id" in st.session_state and not is_demo_mode():
+        st.session_state.last_activity_at = time.time()
+
+
+@st.fragment(run_every=INACTIVITY_CHECK_INTERVAL)
+def inactivity_logout_guard() -> None:
+    """Automatically sign out authenticated users after true app inactivity."""
+    if is_demo_mode() or "user_id" not in st.session_state:
+        return
+
+    timeout_minutes = inactivity_timeout_minutes()
+    if timeout_minutes <= 0:
+        return
+
+    last_activity = float(
+        st.session_state.get("last_activity_at", time.time())
+    )
+    elapsed_seconds = time.time() - last_activity
+    if elapsed_seconds < timeout_minutes * 60:
+        return
+
+    # Remove both the active Supabase session and its encrypted refresh token.
+    # Clearing only Session State would allow Keep-me-signed-in to restore the
+    # user immediately on the next rerun, which defeats inactivity logout.
+    client = st.session_state.get("supabase_client")
+    cookies = st.session_state.get("cookie_manager")
+
+    try:
+        if client is not None:
+            client.auth.sign_out()
+    except Exception:
+        pass
+
+    try:
+        if cookies is not None:
+            remove_cookie_value(cookies, COOKIE_REFRESH_TOKEN)
+            # Give the cookie component a moment to persist the deletion before
+            # forcing the full-app rerun.
+            time.sleep(0.20)
+    except Exception:
+        pass
+
+    clear_login_state()
+    # Prevent a stale refresh token from restoring the session while the
+    # browser finishes persisting the cookie deletion. The cookie manager
+    # itself remains available so a later fresh login can still be remembered.
+    st.session_state.block_cookie_restore = True
+    st.session_state.idle_logout_notice = (
+        f"For your security, you were signed out after {timeout_minutes} "
+        f"minutes without app activity."
+    )
+    st.rerun()
 
 
 def get_public_app_url() -> str:
@@ -4947,6 +5251,28 @@ def login_screen(
         "A private operations ledger for contracts, mining, trading, and performance analysis across the verse.",
         "Operations Console",
     )
+
+    idle_notice = st.session_state.pop("idle_logout_notice", "")
+    if idle_notice:
+        st.warning(idle_notice, icon="🔒")
+
+    st.markdown("### Explore the full app without an account")
+    st.caption(
+        "Portfolio visitors can open a complete interactive preview populated "
+        "with fictional contracts, mining, commodity, blueprint, and loot data."
+    )
+    if st.button(
+        "Explore Interactive Demo",
+        key="launch_public_demo",
+        type="primary",
+        width="stretch",
+    ):
+        start_demo_mode()
+        st.rerun()
+    st.caption(
+        "Demo data is session-only and cannot read from or write to the production database."
+    )
+    st.divider()
 
     login_tab, signup_tab, recovery_tab = st.tabs(["Sign in", "Create account", "Recover account"])
 
@@ -5110,6 +5436,12 @@ def fetch_table(table_name: str) -> pd.DataFrame:
     """Read one signed-in user's private table with RLS as a second guard."""
     if table_name not in USER_OWNED_TABLES:
         raise ValueError(f"Unsupported database table: {table_name}")
+
+    if is_demo_mode():
+        frame = ensure_demo_store().get(table_name, pd.DataFrame()).copy()
+        if not frame.empty and "date_saved" in frame.columns:
+            frame = frame.sort_values("date_saved", ascending=False)
+        return frame.reset_index(drop=True)
 
     user_id = str(st.session_state.get("user_id", "")).strip()
     if not user_id:
@@ -6310,6 +6642,20 @@ def insert_commodity_transaction(
         "total_value": total_value,
     }
 
+    if is_demo_mode():
+        row = _demo_insert("commodity_transactions", cleaned_payload)
+        normalized = normalize_commodity_transactions(pd.DataFrame([row]))
+        saved = normalized.iloc[0]
+        return {
+            "id": int(saved.get("id") or 0) or None,
+            "commodity_name": str(saved["commodity_name"]),
+            "action": str(saved["action"]),
+            "quantity_scu": float(saved["quantity_scu"]),
+            "unit_price": float(saved["unit_price"]),
+            "total_value": float(saved["total_value"]),
+            "cash_effect": float(saved["cash_effect"]),
+        }
+
     table = get_supabase().table("commodity_transactions")
     response = table.insert(cleaned_payload).execute()
     returned_rows = list(response.data or [])
@@ -7095,6 +7441,14 @@ def insert_blueprint(payload: dict[str, Any]) -> dict[str, Any]:
         "blueprint_name": blueprint_name,
         "materials": materials,
     }
+    if is_demo_mode():
+        row = _demo_insert("blueprint_tracker", cleaned_payload)
+        return {
+            "id": int(row.get("id") or 0) or None,
+            "blueprint_name": blueprint_name,
+            "materials": materials,
+        }
+
     response = (
         get_supabase()
         .table("blueprint_tracker")
@@ -7337,6 +7691,15 @@ def insert_contract(payload: dict[str, Any]) -> dict[str, Any]:
         "individual_share": individual_share,
     }
 
+    if is_demo_mode():
+        row = _demo_insert("contracts", cleaned_payload)
+        row.update({
+            "gross_income": gross_income,
+            "net_payout": net_payout,
+            "individual_share": individual_share,
+        })
+        return row
+
     response = (
         get_supabase()
         .table("contracts")
@@ -7426,6 +7789,20 @@ def insert_ore(payload: dict[str, Any]) -> dict[str, Any]:
         "total_value": total_value,
     }
 
+    if is_demo_mode():
+        row = _demo_insert("ore_transactions", cleaned_payload)
+        normalized = normalize_ore_transactions(pd.DataFrame([row]))
+        saved = normalized.iloc[0]
+        return {
+            "id": int(saved.get("id") or 0) or None,
+            "action": str(saved["action"]),
+            "ore_name": str(saved["ore_name"]),
+            "quantity_scu": float(saved["quantity_scu"]),
+            "unit_price": float(saved["unit_price"]),
+            "total_value": float(saved["total_value"]),
+            "cash_effect": float(saved["cash_effect"]),
+        }
+
     table = get_supabase().table("ore_transactions")
     response = table.insert(cleaned_payload).execute()
     returned_rows = list(response.data or [])
@@ -7491,6 +7868,10 @@ def delete_record(table_name: str, record_id: int) -> None:
     if not user_id:
         raise RuntimeError("The signed-in user ID is missing.")
 
+    if is_demo_mode():
+        _demo_delete(table_name, record_id)
+        return
+
     (
         get_supabase()
         .table(table_name)
@@ -7526,6 +7907,10 @@ def update_record(
     user_id = str(st.session_state.get("user_id", "")).strip()
     if not user_id:
         raise RuntimeError("The signed-in user ID is missing.")
+
+    if is_demo_mode():
+        _demo_update(table_name, record_id, payload)
+        return
 
     (
         get_supabase()
@@ -13218,6 +13603,14 @@ def normalize_loot_locations(
 
 def load_loot_locations() -> tuple[pd.DataFrame, str]:
     """Load loot records visible to the current authenticated user."""
+    if is_demo_mode():
+        return (
+            normalize_loot_locations(
+                ensure_demo_store().get("loot_locations", pd.DataFrame()).copy()
+            ),
+            "",
+        )
+
     try:
         response = (
             get_supabase()
@@ -13256,6 +13649,11 @@ def insert_loot_location(
         raise ValueError("Item name is required.")
     if not location_name:
         raise ValueError("Location is required.")
+
+    if is_demo_mode():
+        row = _demo_insert("loot_locations", payload)
+        normalized = normalize_loot_locations(pd.DataFrame([row]))
+        return normalized.iloc[0].to_dict()
 
     response = (
         get_supabase()
@@ -15259,6 +15657,12 @@ def main() -> None:
         login_screen(client, cookies)
         return
 
+    # A full-script rerun means the authenticated user interacted with the app.
+    # The fragment below reruns independently every 30 seconds and therefore
+    # checks elapsed idle time without resetting this timestamp itself.
+    mark_authenticated_activity()
+    inactivity_logout_guard()
+
     with st.sidebar:
         sidebar_logo_uri = image_data_uri(
             "star_citizen_emblem_blue.png"
@@ -15283,6 +15687,14 @@ def main() -> None:
             """,
             unsafe_allow_html=True,
         )
+
+        if is_demo_mode():
+            st.markdown(
+                "<div style='margin:0.4rem 0 0.8rem 0;padding:0.55rem 0.75rem;"
+                "border:1px solid rgba(67,155,255,.55);border-radius:10px;"
+                "font-weight:700;text-align:center;'>🧪 DEMO MODE</div>",
+                unsafe_allow_html=True,
+            )
 
         sidebar_display_name = st.session_state.get(
             "user_display_name",
@@ -15370,15 +15782,18 @@ def main() -> None:
                     LIVE DATA
                 </div>
                 <div class="sidebar-status-copy">
-                    Universe sync: Online<br>
-                    UEX and Supabase services are configured separately.
+                    {"Sample data: Session only<br>Production database: Protected" if is_demo_mode() else "Universe sync: Online<br>UEX and Supabase services are configured separately."}
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-        if st.button("Sign out", width="stretch", key="sidebar_sign_out"):
+        if is_demo_mode():
+            if st.button("Exit Demo", width="stretch", key="sidebar_exit_demo"):
+                exit_demo_mode()
+                st.rerun()
+        elif st.button("Sign out", width="stretch", key="sidebar_sign_out"):
             try:
                 client.auth.sign_out()
             finally:
@@ -15387,8 +15802,14 @@ def main() -> None:
                 st.rerun()
 
     page = st.session_state.nav_page
+    if is_demo_mode() and page != "My Profile":
+        demo_mode_banner()
+
     if page == "My Profile":
-        profile_page(client, cookies)
+        if is_demo_mode():
+            demo_profile_page()
+        else:
+            profile_page(client, cookies)
     elif page == "Dashboard":
         dashboard_page()
     elif page == "Contract Calculator":
