@@ -7604,6 +7604,34 @@ def format_money(value: float | int) -> str:
     return f"{float(value):,.0f} aUEC"
 
 
+def format_compact_chart_value(
+    value: float | int,
+    *,
+    signed: bool = False,
+) -> str:
+    """Return a compact chart label while preserving exact values on hover."""
+    numeric = float(value)
+    magnitude = abs(numeric)
+
+    if numeric < 0:
+        prefix = "-"
+    elif signed and numeric > 0:
+        prefix = "+"
+    else:
+        prefix = ""
+
+    if magnitude >= 1_000_000_000:
+        body = f"{magnitude / 1_000_000_000:.2f}".rstrip("0").rstrip(".") + "B"
+    elif magnitude >= 1_000_000:
+        body = f"{magnitude / 1_000_000:.2f}".rstrip("0").rstrip(".") + "M"
+    elif magnitude >= 1_000:
+        body = f"{magnitude / 1_000:.1f}".rstrip("0").rstrip(".") + "K"
+    else:
+        body = f"{magnitude:,.0f}"
+
+    return f"{prefix}{body}"
+
+
 def build_ore_inventory(ores: pd.DataFrame) -> pd.DataFrame:
     """Calculate verified ore quantities and values by resource."""
     columns = [
@@ -8649,10 +8677,23 @@ def dashboard_page() -> None:
         earnings_daily["Day Label"] = earnings_daily["Day"].dt.strftime(
             "%b %d, %Y"
         )
+        earnings_daily["Day Short"] = earnings_daily["Day"].dt.strftime(
+            "%b %d"
+        )
         earnings_daily["Position"] = list(range(len(earnings_daily)))
         earnings_daily["Plot Value"] = earnings_daily["Total Earnings"].abs()
-        earnings_daily["Label"] = earnings_daily["Total Earnings"].map(
-            lambda value: f"{value:,.0f} aUEC"
+        earnings_label_threshold = (
+            float(earnings_daily["Plot Value"].max()) * 0.04
+            if len(earnings_daily) > 7
+            else 0.0
+        )
+        earnings_daily["Label"] = earnings_daily.apply(
+            lambda row: (
+                format_compact_chart_value(row["Total Earnings"])
+                if row["Plot Value"] >= earnings_label_threshold
+                else ""
+            ),
+            axis=1,
         )
 
         total_earnings_figure = go.Figure(
@@ -8668,6 +8709,7 @@ def dashboard_page() -> None:
                 cliponaxis=False,
                 customdata=earnings_daily[
                     [
+                        "Day Label",
                         "Contract Earnings",
                         "Ore Sales",
                         "Commodity Sales",
@@ -8675,10 +8717,11 @@ def dashboard_page() -> None:
                     ]
                 ].to_numpy(),
                 hovertemplate=(
-                    "<b>%{customdata[3]:,.0f} aUEC total</b><br>"
-                    "Contracts: %{customdata[0]:,.0f} aUEC<br>"
-                    "Ore sales: %{customdata[1]:,.0f} aUEC<br>"
-                    "Commodity sales: %{customdata[2]:,.0f} aUEC"
+                    "<b>%{customdata[0]}</b><br>"
+                    "Total: %{customdata[4]:,.0f} aUEC<br>"
+                    "Contracts: %{customdata[1]:,.0f} aUEC<br>"
+                    "Ore sales: %{customdata[2]:,.0f} aUEC<br>"
+                    "Commodity sales: %{customdata[3]:,.0f} aUEC"
                     "<extra></extra>"
                 ),
             )
@@ -8687,12 +8730,15 @@ def dashboard_page() -> None:
         total_earnings_figure.update_xaxes(
             tickmode="array",
             tickvals=positions,
-            ticktext=earnings_daily["Day Label"].tolist(),
+            ticktext=earnings_daily["Day Short"].tolist(),
             range=[-0.6, max(positions[-1] + 0.6, 0.6)],
-            title_text="Day",
+            title_text="",
+            tickangle=-30,
+            tickfont={"size": 10},
         )
         total_earnings_figure.update_yaxes(
-            title_text="Earnings in aUEC",
+            title_text="Earnings (aUEC)",
+            tickformat="~s",
         )
         apply_bar_axis_padding(
             total_earnings_figure,
@@ -8700,15 +8746,23 @@ def dashboard_page() -> None:
             orientation="vertical",
             padding=0.20,
         )
-        style_plotly_figure(total_earnings_figure, height=390)
-        total_earnings_figure.update_layout(showlegend=False)
+        style_plotly_figure(total_earnings_figure, height=365)
+        total_earnings_figure.update_layout(
+            showlegend=False,
+            bargap=0.30,
+            hovermode="closest",
+            uniformtext={"minsize": 10, "mode": "hide"},
+        )
+        total_earnings_figure.update_traces(
+            textfont={"size": 10, "color": "#F4F8FF"},
+        )
         center_dashboard_bar_figure(
             total_earnings_figure,
             orientation="vertical",
-            top=52,
-            bottom=58,
-            left=72,
-            right=72,
+            top=58,
+            bottom=70,
+            left=76,
+            right=44,
         )
     else:
         total_earnings_figure = empty_dashboard_figure(
@@ -8735,7 +8789,7 @@ def dashboard_page() -> None:
     ].abs()
     source_data["Label"] = source_data[
         "Net Contribution"
-    ].map(lambda value: f"{value:+,.0f} aUEC")
+    ].map(lambda value: format_compact_chart_value(value, signed=True))
 
     source_figure = px.bar(
         source_data,
@@ -8803,7 +8857,7 @@ def dashboard_page() -> None:
         ].copy()
         ore_value_data["Plot Value"] = ore_value_data["total_value"].abs()
         ore_value_data["Label"] = ore_value_data["total_value"].map(
-            lambda value: f"{value:,.0f}"
+            format_compact_chart_value
         )
 
         ore_value_figure = px.bar(
@@ -8886,7 +8940,7 @@ def dashboard_page() -> None:
                     ].sum(axis=1)
                 )
             )
-            .nlargest(7, "ActivityMagnitude")
+            .nlargest(5, "ActivityMagnitude")
             ["Commodity"]
         )
         commodity_plot = commodity_performance[
@@ -8907,9 +8961,20 @@ def dashboard_page() -> None:
         long_values["Plot Value"] = long_values[
             "Signed Value"
         ].abs()
-        long_values["Label"] = long_values[
-            "Signed Value"
-        ].map(lambda value: f"{value:+,.0f} aUEC")
+        commodity_label_threshold = float(long_values["Plot Value"].max()) * (
+            0.04 if commodity_plot["Commodity"].nunique() <= 3 else 0.065
+        )
+        long_values["Label"] = long_values.apply(
+            lambda row: (
+                format_compact_chart_value(
+                    row["Signed Value"],
+                    signed=(row["Measure"] == "Net Profit"),
+                )
+                if row["Plot Value"] >= commodity_label_threshold
+                else ""
+            ),
+            axis=1,
+        )
 
         commodity_profit_figure = px.bar(
             long_values,
@@ -8933,6 +8998,7 @@ def dashboard_page() -> None:
         commodity_profit_figure.update_traces(
             textposition="outside",
             cliponaxis=False,
+            textfont={"size": 10, "color": "#F4F8FF"},
             hovertemplate=(
                 "<b>%{x}</b><br>"
                 "%{fullData.name}: %{customdata[0]:+,.0f} aUEC"
@@ -8959,30 +9025,41 @@ def dashboard_page() -> None:
         )
         style_plotly_figure(
             commodity_profit_figure,
-            height=410,
+            height=420,
+        )
+        commodity_profit_figure.update_xaxes(
+            title_text="",
+            tickangle=-18,
+            tickfont={"size": 11},
+        )
+        commodity_profit_figure.update_yaxes(
+            title_text="Value (aUEC)",
+            tickformat="~s",
         )
         commodity_profit_figure.update_layout(
             coloraxis=None,
             legend={
                 "orientation": "h",
                 "yanchor": "bottom",
-                "y": 1.12,
+                "y": 1.10,
                 "xanchor": "center",
                 "x": .5,
                 "title_text": "",
+                "font": {"size": 11},
             },
-            uniformtext_minsize=8,
-            uniformtext_mode="show",
-            bargap=0.24,
-            bargroupgap=0.08,
+            uniformtext_minsize=9,
+            uniformtext_mode="hide",
+            bargap=0.20,
+            bargroupgap=0.06,
+            hovermode="closest",
         )
         center_dashboard_bar_figure(
             commodity_profit_figure,
             orientation="vertical",
-            top=82,
-            bottom=62,
+            top=86,
+            bottom=76,
             left=76,
-            right=76,
+            right=44,
         )
     else:
         commodity_profit_figure = empty_dashboard_figure(
@@ -9004,7 +9081,7 @@ def dashboard_page() -> None:
             "net_payout"
         ].abs()
         contract_type_data["Label"] = contract_type_data["net_payout"].map(
-            lambda value: f"{value:,.0f} aUEC"
+            format_compact_chart_value
         )
         contract_type_figure = px.bar(
             contract_type_data,
@@ -9115,85 +9192,134 @@ def dashboard_page() -> None:
             donut=True,
         )
 
-    top_col1, top_col2, top_col3 = st.columns(3, gap="medium")
-    with top_col1:
-        with st.container(border=True):
-            analytics_heading(
-                "Total earnings over time",
-                "Combined earnings from contracts, ore sales, and commodity sales.",
-                "Combined Performance",
-            )
-            st.plotly_chart(
-                total_earnings_figure,
-                width="stretch",
-                config={"displayModeBar": False},
-            )
+    # One-chart analytics viewer. Only the selected figure is rendered, so
+    # every chart gets the full dashboard width instead of competing for room
+    # inside a multi-column layout.
+    dashboard_charts = [
+        {
+            "button_label": "Earnings Trend",
+            "title": "Total earnings over time",
+            "description": (
+                "Combined earnings from contracts, ore sales, and commodity sales."
+            ),
+            "eyebrow": "Combined Performance",
+            "figure": total_earnings_figure,
+        },
+        {
+            "button_label": "Source Contribution",
+            "title": "Net contribution by source",
+            "description": (
+                "Contracts, ore trading, and commodities remain visible even "
+                "when a source is negative."
+            ),
+            "eyebrow": "Income & Cost Mix",
+            "figure": source_figure,
+        },
+        {
+            "button_label": "Ore Value",
+            "title": "Ore value by mineral",
+            "description": "Compare mined, purchased, and sold mineral value.",
+            "eyebrow": "Mining Performance",
+            "figure": ore_value_figure,
+        },
+        {
+            "button_label": "Commodity Trade",
+            "title": "Commodity trade performance",
+            "description": (
+                "Purchase cost, sales revenue, cargo losses, and net profit "
+                "by commodity."
+            ),
+            "eyebrow": "Trade Performance",
+            "figure": commodity_profit_figure,
+        },
+        {
+            "button_label": "Contract Types",
+            "title": "Contract earnings by type",
+            "description": "Contract categories ranked by total net payout.",
+            "eyebrow": "Mission Performance",
+            "figure": contract_type_figure,
+        },
+        {
+            "button_label": "Activity Mix",
+            "title": "Activity mix",
+            "description": (
+                "Share of saved records across contracts, ore, and commodities."
+            ),
+            "eyebrow": "Operational Mix",
+            "figure": activity_mix_figure,
+        },
+    ]
 
-    with top_col2:
-        with st.container(border=True):
-            analytics_heading(
-                "Net contribution by source",
-                "Contracts, ore trading, and commodities remain visible even when a source is negative.",
-                "Income & Cost Mix",
-            )
-            st.plotly_chart(
-                source_figure,
-                width="stretch",
-                config={"displayModeBar": False},
-            )
+    chart_count = len(dashboard_charts)
+    current_chart_index = int(
+        st.session_state.get("dashboard_chart_index", 0)
+    ) % chart_count
 
-    with top_col3:
-        with st.container(border=True):
-            analytics_heading(
-                "Ore value by mineral",
-                "Compare mined, purchased, and sold mineral value.",
-                "Mining Performance",
-            )
-            st.plotly_chart(
-                ore_value_figure,
-                width="stretch",
-                config={"displayModeBar": False},
-            )
+    with st.container(border=True):
+        st.markdown(
+            """
+            <div style="color:#8FA7C4; font-size:0.78rem; font-weight:700;
+                        letter-spacing:0.08em; margin-bottom:0.45rem;">
+                SELECT ANALYTICS VIEW
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    bottom_col1, bottom_col2, bottom_col3 = st.columns(3, gap="medium")
-    with bottom_col1:
-        with st.container(border=True):
-            analytics_heading(
-                "Commodity trade performance",
-                "Purchase cost, sales revenue, cargo losses, and net profit by commodity.",
-                "Trade Performance",
-            )
-            st.plotly_chart(
-                commodity_profit_figure,
-                width="stretch",
-                config={"displayModeBar": False},
-            )
+        # Two rows of three named buttons keep the controls readable on narrow
+        # screens while still allowing direct access to every analytics view.
+        for row_start in (0, 3):
+            button_columns = st.columns(3)
+            for column_offset, button_column in enumerate(button_columns):
+                chart_index = row_start + column_offset
+                chart = dashboard_charts[chart_index]
+                with button_column:
+                    if st.button(
+                        chart["button_label"],
+                        key=f"dashboard_chart_select_{chart_index}",
+                        type=(
+                            "primary"
+                            if chart_index == current_chart_index
+                            else "secondary"
+                        ),
+                        width="stretch",
+                    ):
+                        if chart_index != current_chart_index:
+                            st.session_state["dashboard_chart_index"] = chart_index
+                            st.rerun()
 
-    with bottom_col2:
-        with st.container(border=True):
-            analytics_heading(
-                "Contract earnings by type",
-                "Contract categories ranked by total net payout.",
-                "Mission Performance",
-            )
-            st.plotly_chart(
-                contract_type_figure,
-                width="stretch",
-                config={"displayModeBar": False},
-            )
+        current_chart_index = int(
+            st.session_state.get("dashboard_chart_index", 0)
+        ) % chart_count
+        current_chart = dashboard_charts[current_chart_index]
 
-    with bottom_col3:
-        with st.container(border=True):
-            analytics_heading(
-                "Activity mix",
-                "Share of saved records across contracts, ore, and commodities.",
-                "Operational Mix",
-            )
-            st.plotly_chart(
-                activity_mix_figure,
-                width="stretch",
-                config={"displayModeBar": False},
-            )
+        analytics_heading(
+            current_chart["title"],
+            current_chart["description"],
+            current_chart["eyebrow"],
+        )
+
+        # All charts share one roomy viewer. Exact values remain available in
+        # Plotly hover tooltips even when compact labels are used on the graph.
+        current_figure = current_chart["figure"]
+        current_figure.update_layout(
+            height=560,
+            autosize=True,
+        )
+        st.plotly_chart(
+            current_figure,
+            width="stretch",
+            config={
+                "displayModeBar": False,
+                "responsive": True,
+            },
+            key=f"dashboard_chart_view_{current_chart_index}",
+        )
+
+        st.caption(
+            f"Viewing {current_chart['button_label']}. "
+            "Choose another analytics button above or hover the chart for exact values."
+        )
 
     st.markdown(
         """
