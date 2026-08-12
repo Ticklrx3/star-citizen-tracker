@@ -10,6 +10,7 @@ from urllib.parse import quote
 import base64
 import html
 import json
+import math
 import re
 import time
 import zipfile
@@ -331,6 +332,7 @@ DATA_DIR = Path(__file__).parent / "data"
 MINING_LOCATIONS_FILE = DATA_DIR / "mining_locations.csv"
 UEX_API_BASE = "https://api.uexcorp.uk/2.0"
 UEX_CACHE_SECONDS = 840
+STARMAP_CACHE_SECONDS = 3600
 SC_TRADE_TOOLS_API_BASE = "https://sc-trade.tools/api"
 SC_TRADE_TOOLS_CACHE_SECONDS = 840
 SC_TRADE_TOOLS_URL = "https://sc-trade.tools/"
@@ -3296,6 +3298,8 @@ def render_app_icon_styles() -> None:
         ".st-key-nav_ore_ledger": "icons/ore-ledger.svg",
         ".st-key-nav_commodities": "icons/commodities.svg",
         ".st-key-nav_mining_locations": "icons/mining-locations.svg",
+        ".st-key-nav_starmap_&_route_planner": "icons/mining-locations.svg",
+        ".st-key-nav_starmap_route_planner": "icons/mining-locations.svg",
         '[class*="st-key-nav_loot_"]': "icons/loot-shops.svg",
         ".st-key-nav_blueprints": "icons/blueprints.svg",
         ".st-key-nav_saved_records": "icons/saved-records.svg",
@@ -15789,6 +15793,584 @@ def export_page() -> None:
         )
 
 
+
+
+def _route_demo_store() -> list[dict[str, Any]]:
+    """Return the session-only saved-route store used by recruiter demo mode."""
+    return st.session_state.setdefault("demo_saved_routes", [])
+
+
+def load_saved_routes() -> list[dict[str, Any]]:
+    """Load the signed-in user's saved routes; gracefully handle a missing migration."""
+    if is_demo_mode():
+        return list(_route_demo_store())
+    user_id = str(st.session_state.get("user_id", "")).strip()
+    if not user_id:
+        return []
+    try:
+        response = (
+            get_supabase()
+            .table("saved_routes")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("updated_at", desc=True)
+            .execute()
+        )
+        return list(response.data or [])
+    except Exception as exc:
+        st.session_state.route_storage_error = str(exc)
+        return []
+
+
+def save_route_record(route_name: str, route_data: list[dict[str, Any]], notes: str = "") -> dict[str, Any]:
+    """Persist one route to Supabase, or the isolated demo store."""
+    cleaned_name = route_name.strip() or f"Route {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    payload = {
+        "route_name": cleaned_name,
+        "route_data": route_data,
+        "notes": notes.strip(),
+        "is_active": False,
+    }
+    if is_demo_mode():
+        rows = _route_demo_store()
+        row = {
+            "id": max([int(item.get("id", 0)) for item in rows] + [6000]) + 1,
+            "user_id": DEMO_USER_ID,
+            **payload,
+            "created_at": _demo_now().isoformat(),
+            "updated_at": _demo_now().isoformat(),
+        }
+        rows.insert(0, row)
+        return row
+
+    user_id = str(st.session_state.get("user_id", "")).strip()
+    if not user_id:
+        raise RuntimeError("The signed-in user ID is missing.")
+    response = (
+        get_supabase()
+        .table("saved_routes")
+        .insert({"user_id": user_id, **payload})
+        .execute()
+    )
+    rows = list(response.data or [])
+    if not rows:
+        raise RuntimeError(
+            "The route table did not return a saved row. Run database/schema_migration_v11_saved_routes.sql once in Supabase."
+        )
+    return rows[0]
+
+
+def activate_saved_route(route_id: int) -> None:
+    """Mark one saved route as the active companion route."""
+    if is_demo_mode():
+        for row in _route_demo_store():
+            row["is_active"] = int(row.get("id", 0)) == int(route_id)
+        return
+    user_id = str(st.session_state.get("user_id", "")).strip()
+    table = get_supabase().table("saved_routes")
+    table.update({"is_active": False}).eq("user_id", user_id).execute()
+    table.update({"is_active": True}).eq("user_id", user_id).eq("id", int(route_id)).execute()
+
+
+def delete_saved_route(route_id: int) -> None:
+    """Delete one saved route belonging to the current user."""
+    if is_demo_mode():
+        rows = _route_demo_store()
+        rows[:] = [row for row in rows if int(row.get("id", 0)) != int(route_id)]
+        return
+    user_id = str(st.session_state.get("user_id", "")).strip()
+    (
+        get_supabase()
+        .table("saved_routes")
+        .delete()
+        .eq("user_id", user_id)
+        .eq("id", int(route_id))
+        .execute()
+    )
+
+
+def active_saved_route() -> dict[str, Any] | None:
+    """Return the user's current active route when available."""
+    rows = load_saved_routes()
+    for row in rows:
+        if bool(row.get("is_active")):
+            return row
+    return rows[0] if rows else None
+
+
+def _routeable_uex_row(row: dict[str, Any]) -> bool:
+    """Return True for visible/live UEX location rows suitable for route planning."""
+    if row.get("is_visible") is not None and not uex_flag(row.get("is_visible")):
+        return False
+    if row.get("is_available_live") is not None and not uex_flag(row.get("is_available_live")):
+        return False
+    if row.get("is_decommissioned") is not None and uex_flag(row.get("is_decommissioned")):
+        return False
+    return True
+
+
+def _service_summary(row: dict[str, Any]) -> str:
+    services = []
+    for key, label in (
+        ("has_quantum_marker", "Quantum"),
+        ("has_trade_terminal", "Trade"),
+        ("has_refuel", "Refuel"),
+        ("has_repair", "Repair"),
+        ("has_refinery", "Refinery"),
+        ("has_cargo_center", "Cargo"),
+        ("has_clinic", "Clinic"),
+        ("has_shops", "Shops"),
+    ):
+        if uex_flag(row.get(key)):
+            services.append(label)
+    return ", ".join(services) or "Navigation location"
+
+
+def _fallback_starmap_nodes() -> list[dict[str, Any]]:
+    """Packaged schematic fallback so the route planner remains usable offline."""
+    raw = [
+        ("Stanton", "System", "Stanton", "", 0.0, 0.0),
+        ("Hurston", "Planet", "Stanton", "Stanton", -13.0, 8.0),
+        ("Crusader", "Planet", "Stanton", "Stanton", 13.0, 8.0),
+        ("ArcCorp", "Planet", "Stanton", "Stanton", 13.0, -9.0),
+        ("microTech", "Planet", "Stanton", "Stanton", -13.0, -9.0),
+        ("Lorville", "City", "Stanton", "Hurston", -14.6, 8.7),
+        ("Everus Harbor", "Station", "Stanton", "Hurston", -11.2, 9.2),
+        ("Area18", "City", "Stanton", "ArcCorp", 14.5, -8.2),
+        ("Baijini Point", "Station", "Stanton", "ArcCorp", 11.4, -10.0),
+        ("Orison", "City", "Stanton", "Crusader", 14.3, 8.7),
+        ("Seraphim Station", "Station", "Stanton", "Crusader", 11.2, 9.5),
+        ("New Babbage", "City", "Stanton", "microTech", -14.4, -8.1),
+        ("Port Tressler", "Station", "Stanton", "microTech", -11.0, -10.1),
+        ("Lyria", "Moon", "Stanton", "ArcCorp", 16.2, -11.0),
+        ("Daymar", "Moon", "Stanton", "Crusader", 16.0, 10.8),
+        ("Aberdeen", "Moon", "Stanton", "Hurston", -16.3, 10.6),
+        ("Pyro", "System", "Pyro", "", 48.0, 0.0),
+        ("Pyro I", "Planet", "Pyro", "Pyro", 39.0, 8.0),
+        ("Pyro III", "Planet", "Pyro", "Pyro", 53.0, 9.0),
+        ("Pyro V", "Planet", "Pyro", "Pyro", 55.0, -8.0),
+        ("Ruin Station", "Station", "Pyro", "Pyro", 43.0, -9.0),
+    ]
+    nodes = []
+    for idx, (name, kind, system, parent, x, y) in enumerate(raw, start=1):
+        nodes.append({
+            "node_key": f"fallback:{idx}", "name": name, "type": kind,
+            "system": system, "parent": parent, "x": x, "y": y,
+            "services": "Packaged reference", "source": "Packaged fallback",
+        })
+    return nodes
+
+
+@st.cache_data(ttl=STARMAP_CACHE_SECONDS, show_spinner=False)
+def load_starmap_nodes() -> tuple[list[dict[str, Any]], str]:
+    """Build a clickable schematic universe map from live UEX hierarchy data."""
+    try:
+        systems = [r for r in fetch_uex_resource("star_systems") if _routeable_uex_row(r)]
+        planets = [r for r in fetch_uex_resource("planets") if _routeable_uex_row(r)]
+        moons = [r for r in fetch_uex_resource("moons") if _routeable_uex_row(r)]
+        stations = [r for r in fetch_uex_resource("space_stations") if _routeable_uex_row(r)]
+        cities = [r for r in fetch_uex_resource("cities") if _routeable_uex_row(r)]
+        outposts = [r for r in fetch_uex_resource("outposts") if _routeable_uex_row(r)]
+
+        system_rows = sorted(systems, key=lambda r: str(r.get("name") or ""))
+        if not system_rows:
+            raise RuntimeError("No live UEX star systems were returned.")
+
+        nodes: list[dict[str, Any]] = []
+        coords: dict[tuple[str, int], tuple[float, float, str]] = {}
+        system_ids: dict[int, str] = {}
+
+        for sidx, row in enumerate(system_rows):
+            sid = int(row.get("id") or 0)
+            name = str(row.get("name") or f"System {sid}")
+            center_x = float(sidx * 52)
+            center_y = 0.0
+            system_ids[sid] = name
+            coords[("System", sid)] = (center_x, center_y, name)
+            nodes.append({
+                "node_key": f"system:{sid}", "name": name, "type": "System",
+                "system": name, "parent": "", "x": center_x, "y": center_y,
+                "services": "Star system", "source": "UEX API",
+            })
+
+        planets_by_system: dict[int, list[dict[str, Any]]] = {}
+        for row in planets:
+            planets_by_system.setdefault(int(row.get("id_star_system") or 0), []).append(row)
+
+        for sid, prows in planets_by_system.items():
+            if sid not in system_ids:
+                continue
+            sx, sy, system_name = coords[("System", sid)]
+            prows = sorted(prows, key=lambda r: str(r.get("name") or ""))
+            count = max(len(prows), 1)
+            for pidx, row in enumerate(prows):
+                pid = int(row.get("id") or 0)
+                angle = (2 * math.pi * pidx / count) + 0.42
+                radius = 13.5
+                x = sx + radius * math.cos(angle)
+                y = sy + radius * math.sin(angle)
+                name = str(row.get("name") or f"Planet {pid}")
+                coords[("Planet", pid)] = (x, y, name)
+                nodes.append({
+                    "node_key": f"planet:{pid}", "name": name, "type": "Planet",
+                    "system": system_name, "parent": system_name, "x": x, "y": y,
+                    "services": _service_summary(row), "source": "UEX API",
+                })
+
+        moons_by_planet: dict[int, list[dict[str, Any]]] = {}
+        for row in moons:
+            moons_by_planet.setdefault(int(row.get("id_planet") or 0), []).append(row)
+        for pid, mrows in moons_by_planet.items():
+            parent = coords.get(("Planet", pid))
+            if not parent:
+                continue
+            px, py, pname = parent
+            mrows = sorted(mrows, key=lambda r: str(r.get("name") or ""))
+            count = max(len(mrows), 1)
+            for midx, row in enumerate(mrows):
+                mid = int(row.get("id") or 0)
+                angle = 2 * math.pi * midx / count
+                x = px + 3.3 * math.cos(angle)
+                y = py + 3.3 * math.sin(angle)
+                name = str(row.get("name") or f"Moon {mid}")
+                system_name = str(row.get("star_system_name") or "")
+                coords[("Moon", mid)] = (x, y, name)
+                nodes.append({
+                    "node_key": f"moon:{mid}", "name": name, "type": "Moon",
+                    "system": system_name, "parent": pname, "x": x, "y": y,
+                    "services": _service_summary(row), "source": "UEX API",
+                })
+
+        def append_facilities(rows: list[dict[str, Any]], kind: str, prefix: str) -> None:
+            parent_counts: dict[str, int] = {}
+            for row in sorted(rows, key=lambda r: str(r.get("name") or r.get("nickname") or "")):
+                rid = int(row.get("id") or 0)
+                if not rid:
+                    continue
+                parent = None
+                for parent_kind, field in (("Moon", "id_moon"), ("Planet", "id_planet"), ("System", "id_star_system")):
+                    parent_id = int(row.get(field) or 0)
+                    if parent_id and (parent_kind, parent_id) in coords:
+                        parent = coords[(parent_kind, parent_id)]
+                        break
+                if not parent:
+                    continue
+                px, py, pname = parent
+                counter_key = f"{kind}:{pname}"
+                slot = parent_counts.get(counter_key, 0)
+                parent_counts[counter_key] = slot + 1
+                angle = 0.75 + slot * 1.17
+                radius = 1.35 + 0.35 * (slot // 5)
+                x = px + radius * math.cos(angle)
+                y = py + radius * math.sin(angle)
+                name = str(row.get("name") or row.get("nickname") or f"{kind} {rid}")
+                system_name = str(row.get("star_system_name") or system_ids.get(int(row.get("id_star_system") or 0), ""))
+                nodes.append({
+                    "node_key": f"{prefix}:{rid}", "name": name, "type": kind,
+                    "system": system_name, "parent": pname, "x": x, "y": y,
+                    "services": _service_summary(row), "source": "UEX API",
+                })
+
+        append_facilities(stations, "Station", "station")
+        append_facilities(cities, "City", "city")
+        append_facilities(outposts, "Outpost", "outpost")
+        if len(nodes) < 5:
+            raise RuntimeError("UEX returned too few routeable locations.")
+        return nodes, "Live UEX location hierarchy"
+    except Exception:
+        return _fallback_starmap_nodes(), "Packaged schematic fallback"
+
+
+def build_starmap_figure(nodes: list[dict[str, Any]], route: list[dict[str, Any]]) -> go.Figure:
+    """Render a clean clickable schematic starmap with the planned route overlaid."""
+    fig = go.Figure()
+    node_by_name = {(n["system"], n["name"]): n for n in nodes}
+    node_by_key = {n["node_key"]: n for n in nodes}
+
+    # Hierarchy links establish visual context without claiming exact in-game coordinates.
+    edge_x: list[float | None] = []
+    edge_y: list[float | None] = []
+    for node in nodes:
+        parent_name = str(node.get("parent") or "")
+        if not parent_name:
+            continue
+        parent = node_by_name.get((node.get("system", ""), parent_name))
+        if parent:
+            edge_x.extend([parent["x"], node["x"], None])
+            edge_y.extend([parent["y"], node["y"], None])
+    fig.add_trace(go.Scatter(
+        x=edge_x, y=edge_y, mode="lines", hoverinfo="skip", showlegend=False,
+        line={"width": 1, "color": "rgba(120,160,220,0.22)"},
+    ))
+
+    style = {
+        "System": (18, "diamond"), "Planet": (14, "circle"), "Moon": (10, "circle"),
+        "Station": (10, "square"), "City": (10, "hexagon"), "Outpost": (8, "triangle-up"),
+    }
+    for kind in ("System", "Planet", "Moon", "Station", "City", "Outpost"):
+        rows = [n for n in nodes if n["type"] == kind]
+        if not rows:
+            continue
+        size, symbol = style[kind]
+        fig.add_trace(go.Scatter(
+            x=[n["x"] for n in rows], y=[n["y"] for n in rows], mode="markers",
+            name=kind, marker={"size": size, "symbol": symbol, "line": {"width": 1}},
+            customdata=[[n["node_key"], n["name"], n["type"], n["system"], n["services"]] for n in rows],
+            hovertemplate=("<b>%{customdata[1]}</b><br>%{customdata[2]} · %{customdata[3]}"
+                           "<br>%{customdata[4]}<extra></extra>"),
+        ))
+
+    route_nodes = [node_by_key.get(str(stop.get("node_key", ""))) for stop in route]
+    route_nodes = [n for n in route_nodes if n]
+    if len(route_nodes) >= 2:
+        fig.add_trace(go.Scatter(
+            x=[n["x"] for n in route_nodes], y=[n["y"] for n in route_nodes],
+            mode="lines+markers", name="Planned route",
+            line={"width": 4}, marker={"size": 7}, hoverinfo="skip",
+        ))
+
+    fig.update_layout(
+        height=650,
+        margin={"l": 18, "r": 18, "t": 16, "b": 18},
+        xaxis={"visible": False, "showgrid": False, "zeroline": False},
+        yaxis={"visible": False, "showgrid": False, "zeroline": False, "scaleanchor": "x", "scaleratio": 1},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.01, "x": 0},
+        hovermode="closest",
+        dragmode="pan",
+    )
+    return fig
+
+
+def _route_stop_from_node(node: dict[str, Any]) -> dict[str, Any]:
+    return {key: node.get(key, "") for key in ("node_key", "name", "type", "system", "services")}
+
+
+@st.fragment
+def render_starmap_route_planner() -> None:
+    nodes, source_label = load_starmap_nodes()
+    st.caption(
+        f"Location source: {source_label}. Positions are a schematic navigation layout, not exact in-game Cartesian coordinates."
+    )
+    systems = sorted({str(n.get("system") or "Unknown") for n in nodes})
+    types = [kind for kind in ("System", "Planet", "Moon", "Station", "City", "Outpost") if any(n["type"] == kind for n in nodes)]
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        selected_systems = st.multiselect("Systems", systems, default=systems, key="starmap_system_filter")
+    with c2:
+        selected_types = st.multiselect("Location types", types, default=types, key="starmap_type_filter")
+
+    filtered = [n for n in nodes if n.get("system") in selected_systems and n.get("type") in selected_types]
+    route = st.session_state.setdefault("planned_route", [])
+    fig = build_starmap_figure(filtered, route)
+    event = st.plotly_chart(
+        fig,
+        width="stretch",
+        key="interactive_starmap_chart",
+        on_select="rerun",
+        selection_mode="points",
+        config={"scrollZoom": True, "displaylogo": False},
+    )
+    points = list(getattr(getattr(event, "selection", {}), "points", []) or [])
+    if points:
+        custom = points[0].get("customdata") or []
+        node_key = str(custom[0]) if custom else ""
+        if node_key and node_key != st.session_state.get("last_starmap_selected_node"):
+            node = next((item for item in nodes if item["node_key"] == node_key), None)
+            if node:
+                route.append(_route_stop_from_node(node))
+                st.session_state.last_starmap_selected_node = node_key
+
+    st.markdown("### Planned Route")
+    if not route:
+        st.info("Click a location on the starmap to add your first stop.")
+    else:
+        for idx, stop in enumerate(list(route)):
+            row1, row2, row3, row4 = st.columns([6, 1, 1, 1])
+            with row1:
+                st.markdown(
+                    f"**{idx + 1}. {stop.get('name', 'Stop')}**  \n"
+                    f"{stop.get('type', '')} · {stop.get('system', '')} · {stop.get('services', '')}"
+                )
+            with row2:
+                if st.button("↑", key=f"route_up_{idx}", disabled=idx == 0, width="stretch"):
+                    route[idx - 1], route[idx] = route[idx], route[idx - 1]
+                    st.rerun(scope="fragment")
+            with row3:
+                if st.button("↓", key=f"route_down_{idx}", disabled=idx == len(route) - 1, width="stretch"):
+                    route[idx + 1], route[idx] = route[idx], route[idx + 1]
+                    st.rerun(scope="fragment")
+            with row4:
+                if st.button("✕", key=f"route_remove_{idx}", width="stretch"):
+                    route.pop(idx)
+                    st.rerun(scope="fragment")
+
+        action1, action2, action3 = st.columns(3)
+        with action1:
+            if st.button("Clear Route", key="clear_planned_route", width="stretch"):
+                route.clear()
+                st.session_state.pop("last_starmap_selected_node", None)
+                st.rerun(scope="fragment")
+        with action2:
+            if st.button("Add Return to Start", key="route_return_to_start", width="stretch", disabled=len(route) < 2):
+                route.append(dict(route[0]))
+                st.rerun(scope="fragment")
+        with action3:
+            route_json = json.dumps(route, indent=2).encode("utf-8")
+            st.download_button("Download Route JSON", route_json, "star_citizen_route.json", "application/json", width="stretch")
+
+        with st.container(border=True):
+            route_name = st.text_input("Route name", value="My Operations Route", key="route_save_name")
+            route_notes = st.text_area("Route notes", placeholder="Cargo plan, mission order, refuel notes, crew instructions...", key="route_save_notes")
+            if st.button("Save Route", type="primary", width="stretch", key="save_planned_route"):
+                try:
+                    saved = save_route_record(route_name, list(route), route_notes)
+                    activate_saved_route(int(saved["id"]))
+                    quiet_success("Route saved and set as the active companion route.")
+                except Exception as exc:
+                    st.error(f"Route could not be saved: {exc}")
+
+    saved_routes = load_saved_routes()
+    if saved_routes:
+        st.markdown("### Saved Routes")
+        names = [f"{row.get('route_name', 'Route')}{' · ACTIVE' if row.get('is_active') else ''}" for row in saved_routes]
+        selected_index = st.selectbox("Saved route", range(len(saved_routes)), format_func=lambda i: names[i], key="saved_route_selector")
+        selected = saved_routes[int(selected_index)]
+        a1, a2, a3 = st.columns(3)
+        with a1:
+            if st.button("Load", width="stretch", key="load_saved_route"):
+                route[:] = list(selected.get("route_data") or [])
+                st.session_state.pop("last_starmap_selected_node", None)
+                st.rerun(scope="fragment")
+        with a2:
+            if st.button("Set Active", width="stretch", key="activate_saved_route_button"):
+                activate_saved_route(int(selected["id"]))
+                quiet_success("Active companion route updated.")
+                st.rerun(scope="fragment")
+        with a3:
+            if st.button("Delete", width="stretch", key="delete_saved_route_button"):
+                delete_saved_route(int(selected["id"]))
+                st.rerun(scope="fragment")
+
+    route_error = st.session_state.get("route_storage_error")
+    if route_error and not is_demo_mode():
+        st.caption(
+            "Saved-route database storage is not available yet. The planner still works in-session. "
+            "Run schema_migration_v11_saved_routes.sql in Supabase to enable cross-device route storage."
+        )
+
+
+def starmap_route_planner_page() -> None:
+    page_banner(
+        "mining_locations_feature.jpg",
+        "Interactive Starmap & Route Planner",
+        "Click through routeable locations, build multi-stop runs, and keep one route active for the desktop companion.",
+        "Navigation Console",
+    )
+    st.info(
+        "The map uses UEX's live Star Citizen location hierarchy when available. The plotted positions are schematic so the planner does not claim exact game-space coordinates."
+    )
+    render_starmap_route_planner()
+
+
+def companion_quick_entry_page() -> None:
+    """Compact authenticated page used by the always-on-top Windows companion."""
+    st.markdown("## SC Tracker · Quick Entry")
+    st.caption("Designed for the in-game companion overlay. Records save to the same account and database as the full tracker.")
+
+    active = active_saved_route()
+    if active:
+        route_data = list(active.get("route_data") or [])
+        with st.container(border=True):
+            st.markdown(f"**Active Route · {active.get('route_name', 'Route')}**")
+            if route_data:
+                route_progress = int(st.session_state.get("companion_route_progress", 0))
+                route_progress = max(0, min(route_progress, len(route_data) - 1))
+                current = route_data[route_progress]
+                nxt = route_data[route_progress + 1] if route_progress + 1 < len(route_data) else None
+                st.write(f"Stop {route_progress + 1} of {len(route_data)}: **{current.get('name', 'Stop')}**")
+                if nxt:
+                    st.caption(f"Next: {nxt.get('name', 'Stop')}")
+                p1, p2 = st.columns(2)
+                with p1:
+                    if st.button("Previous Stop", disabled=route_progress == 0, width="stretch"):
+                        st.session_state.companion_route_progress = route_progress - 1
+                        st.rerun()
+                with p2:
+                    if st.button("Complete / Next", disabled=route_progress >= len(route_data) - 1, width="stretch"):
+                        st.session_state.companion_route_progress = route_progress + 1
+                        st.rerun()
+
+    entry_type = st.radio("Entry", ["Contract", "Ore", "Commodity"], horizontal=True, key="companion_entry_type")
+    user_id = str(st.session_state.get("user_id", ""))
+
+    if entry_type == "Contract":
+        with st.form("companion_contract_form", clear_on_submit=True):
+            name = st.text_input("Contract name")
+            ctype = st.selectbox("Contract type", CONTRACT_TYPES)
+            payout = st.number_input("Mission payout (aUEC)", min_value=0.0, step=1000.0)
+            salvage = st.number_input("Salvage value (aUEC)", min_value=0.0, step=1000.0)
+            expenses = st.number_input("Expenses (aUEC)", min_value=0.0, step=500.0)
+            crew = st.number_input("Crew", min_value=1, step=1, value=1)
+            notes = st.text_input("Notes")
+            submit = st.form_submit_button("Save Contract", width="stretch")
+        if submit:
+            try:
+                insert_contract({
+                    "user_id": user_id, "contract_name": name, "contract_type": ctype,
+                    "offer_group": "Companion", "system_name": "", "total_payout": payout,
+                    "salvage_value": salvage, "expenses": expenses, "crew_members": int(crew), "notes": notes,
+                })
+                quiet_success("Contract saved.")
+            except Exception as exc:
+                st.error(str(exc))
+
+    elif entry_type == "Ore":
+        with st.form("companion_ore_form", clear_on_submit=True):
+            action = st.selectbox("Action", ["Mined", "Bought", "Sold"])
+            ore = st.selectbox("Ore / mineral", ORE_TYPES)
+            qty = st.number_input("Quantity (SCU)", min_value=0.0, step=1.0)
+            price = st.number_input("Unit price (aUEC/SCU)", min_value=0.0, step=100.0)
+            location = st.text_input("Location")
+            notes = st.text_input("Notes", key="companion_ore_notes")
+            submit = st.form_submit_button("Save Ore Entry", width="stretch")
+        if submit:
+            try:
+                insert_ore({
+                    "user_id": user_id, "action": action, "ore_name": ore,
+                    "quantity_scu": qty, "unit_price": price, "total_value": qty * price,
+                    "location": location, "notes": notes,
+                })
+                quiet_success("Ore entry saved.")
+            except Exception as exc:
+                st.error(str(exc))
+
+    else:
+        with st.form("companion_commodity_form", clear_on_submit=True):
+            action = st.selectbox("Action", ["Bought", "Sold", "Lost / Destroyed"])
+            commodity = st.text_input("Commodity")
+            qty = st.number_input("Quantity (SCU)", min_value=0.0, step=1.0, key="companion_commodity_qty")
+            price = st.number_input("Unit price (aUEC/SCU)", min_value=0.0, step=100.0, key="companion_commodity_price")
+            fees = st.number_input("Fees (aUEC)", min_value=0.0, step=100.0)
+            location = st.text_input("Location", key="companion_commodity_location")
+            notes = st.text_input("Notes", key="companion_commodity_notes")
+            submit = st.form_submit_button("Save Commodity Entry", width="stretch")
+        if submit:
+            try:
+                insert_commodity_transaction({
+                    "user_id": user_id, "commodity_name": commodity, "action": action,
+                    "quantity_scu": qty, "unit_price": price, "fees": fees,
+                    "purchase_location": location if action == "Bought" else "",
+                    "sale_location": location if action == "Sold" else "",
+                    "notes": notes,
+                })
+                quiet_success("Commodity entry saved.")
+            except Exception as exc:
+                st.error(str(exc))
+
+    st.divider()
+    st.caption("Hotkey tip: use the desktop companion hotkey again to hide this panel and return focus to the game.")
+
+
 def edit_records_page() -> None:
     """Backward-compatible wrapper kept in case a direct link still targets this page."""
     saved_records_page()
@@ -15808,6 +16390,13 @@ def main() -> None:
 
     if "user_id" not in st.session_state:
         login_screen(client, cookies)
+        return
+
+    companion_mode = str(st.query_params.get("companion", "")).strip().lower()
+    if companion_mode == "quick" and not is_demo_mode():
+        mark_authenticated_activity()
+        inactivity_logout_guard()
+        companion_quick_entry_page()
         return
 
     # A full-script rerun means the authenticated user interacted with the app.
@@ -15890,6 +16479,7 @@ def main() -> None:
             "Ore Ledger",
             "Commodities",
             "Mining Locations",
+            "Starmap & Route Planner",
             "Loot & Shops",
             "Blueprints",
             "Saved Records",
@@ -15973,6 +16563,8 @@ def main() -> None:
         commodities_page()
     elif page == "Mining Locations":
         mining_locations_page()
+    elif page == "Starmap & Route Planner":
+        starmap_route_planner_page()
     elif page == "Loot & Shops":
         loot_and_shops_page()
     elif page == "Blueprints":

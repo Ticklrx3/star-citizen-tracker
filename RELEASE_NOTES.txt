@@ -1,0 +1,28 @@
+STAR CITIZEN TRACKER COMPANION RELEASE
+=====================================
+
+Retained:
+- V21 application baseline
+- Public recruiter demo before login
+- 90-minute inactivity logout
+- Fast named dashboard chart buttons
+- Existing Supabase/UEX/SC Trade Tools integrations
+- Contract salvage, ore, commodities, blueprints, loot, exports, profile
+
+Added:
+- Interactive click-to-plan schematic starmap
+- Live UEX hierarchy + packaged fallback
+- Multi-stop route reorder/remove/loop/download
+- Saved routes + active route for companion
+- Compact authenticated ?companion=quick mode
+- Contract/Ore/Commodity quick entry
+- Active-route progress controls
+- Windows full companion WebView
+- Always-on-top Quick Entry overlay
+- Global hotkeys: Ctrl+Shift+T and Ctrl+Shift+F
+- One-click Windows install/run batch file
+- Optional PyInstaller EXE builder
+
+Database:
+- New additive migration only: schema_migration_v11_saved_routes.sql
+- No existing tables are dropped or rebuilt
