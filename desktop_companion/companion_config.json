@@ -1,0 +1,9 @@
+{
+  "app_url": "https://sc-tracker-tool.streamlit.app/",
+  "quick_hotkey": "<ctrl>+<shift>+t",
+  "full_hotkey": "<ctrl>+<shift>+f",
+  "overlay_width": 470,
+  "overlay_height": 780,
+  "full_width": 1440,
+  "full_height": 920
+}
